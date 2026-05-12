@@ -13,6 +13,8 @@ from src.core.config import get_settings
 from src.doors.router import router as doors_router
 from src.faces.router import router as faces_router
 from src.users.router import router as users_router
+import src.roles.models as _roles_models  # noqa: F401
+import src.permissions.models as _permissions_models  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
