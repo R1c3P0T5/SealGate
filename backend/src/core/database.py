@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-from sqlmodel import SQLModel
+from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.core.config import get_settings
@@ -56,6 +56,76 @@ async def create_db_and_tables() -> None:
 
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
+
+
+async def seed_roles_and_permissions() -> None:
+    """Idempotently seed roles and permissions. Safe to call on every startup."""
+    from src.permissions.models import Permission, RolePermission
+    from src.roles.models import Role
+
+    _ALL_PERMISSIONS: list[tuple[str, str]] = [
+        ("face:create", "Create face vectors"),
+        ("face:read", "Read face vectors"),
+        ("face:update", "Update face vectors"),
+        ("face:delete", "Delete face vectors"),
+        ("user:create", "Create users"),
+        ("user:read", "Read user profiles"),
+        ("user:update", "Update user profiles"),
+        ("user:delete", "Delete users"),
+        ("door:open", "Trigger door open"),
+        ("door:read", "Read door information"),
+        ("log:read", "Read access logs"),
+    ]
+    _ROLE_PERMISSIONS: dict[str, set[str]] = {
+        "admin": {p for p, _ in _ALL_PERMISSIONS},
+        "user": {"door:open", "door:read", "log:read"},
+    }
+
+    async with session_context() as session:
+        role_map: dict[str, Role] = {}
+        for role_name in ("admin", "user"):
+            existing = (
+                await session.exec(select(Role).where(Role.name == role_name))
+            ).one_or_none()
+            if existing is None:
+                role = Role(name=role_name)
+                session.add(role)
+                await session.flush()
+                role_map[role_name] = role
+            else:
+                role_map[role_name] = existing
+
+        perm_map: dict[str, Permission] = {}
+        for perm_name, description in _ALL_PERMISSIONS:
+            existing_perm = (
+                await session.exec(
+                    select(Permission).where(Permission.name == perm_name)
+                )
+            ).one_or_none()
+            if existing_perm is None:
+                perm = Permission(name=perm_name, description=description)
+                session.add(perm)
+                await session.flush()
+                perm_map[perm_name] = perm
+            else:
+                perm_map[perm_name] = existing_perm
+
+        for role_name, perm_names in _ROLE_PERMISSIONS.items():
+            role = role_map[role_name]
+            for perm_name in perm_names:
+                perm = perm_map[perm_name]
+                exists = (
+                    await session.exec(
+                        select(RolePermission).where(
+                            RolePermission.role_id == role.id,
+                            RolePermission.permission_id == perm.id,
+                        )
+                    )
+                ).one_or_none()
+                if exists is None:
+                    session.add(RolePermission(role_id=role.id, permission_id=perm.id))
+
+        await session.commit()
 
 
 async def close_db() -> None:
