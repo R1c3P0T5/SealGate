@@ -29,6 +29,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         )
     await db.init_db()
     await db.create_db_and_tables()
+    await db.seed_roles_and_permissions()
     await face_engine.load_engine()
     async with db.session_context() as session:
         await ensure_default_admin(settings, session)
