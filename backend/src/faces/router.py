@@ -1,15 +1,26 @@
+import logging
 from typing import Annotated
 from uuid import UUID
 
 import cv2
 import numpy as np
-from fastapi import APIRouter, Depends, Form, Path, Query, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    Form,
+    Path,
+    Query,
+    UploadFile,
+    WebSocket,
+    status,
+)
 from sqlmodel.ext.asyncio.session import AsyncSession
+from starlette.websockets import WebSocketDisconnect
 
 from src.auth.dependencies import get_current_user
 from src.core.access import require_self_or_admin
 from src.core.config import get_settings
-from src.core.database import SessionDep
+from src.core.database import SessionDep, session_context
 from src.core.exceptions import (
     InvalidImageError,
     NoFaceDetectedError,
@@ -32,6 +43,7 @@ from src.users.models import User
 
 
 router = APIRouter(tags=["faces"])
+logger = logging.getLogger(__name__)
 
 
 def _to_metadata(face: FaceVector) -> FaceVectorMetadata:
@@ -55,6 +67,7 @@ async def _recognize_image_bytes(
     data: bytes,
     session: AsyncSession,
     engine: FaceEngine,
+    threshold: float,
 ) -> RecognizeResponse:
     image_bgr = _decode_image(data)
     embedding = engine.detect_and_embed(image_bgr)
@@ -63,8 +76,16 @@ async def _recognize_image_bytes(
     return await recognize_face_vector(
         embedding,
         session,
-        get_settings().COSINE_THRESHOLD,
+        threshold,
     )
+
+
+def _websocket_error(error: str, detail: str) -> dict[str, object]:
+    return {"type": "error", "error": error, "detail": detail}
+
+
+def _websocket_result(response: RecognizeResponse) -> dict[str, object]:
+    return {"type": "result", **response.model_dump(mode="json")}
 
 
 @router.get(
@@ -158,4 +179,79 @@ async def recognize_face_from_image(
     session: SessionDep,
     engine: EngineDep,
 ) -> RecognizeResponse:
-    return await _recognize_image_bytes(await image.read(), session, engine)
+    return await _recognize_image_bytes(
+        await image.read(),
+        session,
+        engine,
+        get_settings().COSINE_THRESHOLD,
+    )
+
+
+@router.websocket("/ws/faces/recognize")
+async def recognize_faces_websocket(
+    websocket: WebSocket,
+    engine: EngineDep,
+) -> None:
+    settings = get_settings()
+    max_image_bytes = settings.WEBSOCKET_MAX_IMAGE_BYTES
+    threshold = settings.COSINE_THRESHOLD
+
+    await websocket.accept()
+    try:
+        while True:
+            message = await websocket.receive()
+            if message["type"] == "websocket.disconnect":
+                break
+
+            data = message.get("bytes")
+            if data is None:
+                await websocket.send_json(
+                    _websocket_error(
+                        "unsupported_message",
+                        "Send image frames as binary WebSocket messages",
+                    )
+                )
+                continue
+
+            if len(data) > max_image_bytes:
+                await websocket.send_json(
+                    _websocket_error(
+                        "image_too_large",
+                        f"WebSocket image frame exceeds the {max_image_bytes} byte limit",
+                    )
+                )
+                continue
+
+            try:
+                async with session_context() as session:
+                    response = await _recognize_image_bytes(
+                        data,
+                        session,
+                        engine,
+                        threshold,
+                    )
+            except InvalidImageError as exc:
+                await websocket.send_json(_websocket_error("invalid_image", exc.detail))
+            except NoFaceDetectedError:
+                await websocket.send_json(
+                    _websocket_result(
+                        RecognizeResponse(
+                            matched=False,
+                            user_id=None,
+                            username=None,
+                            confidence=0.0,
+                        )
+                    )
+                )
+            except Exception:
+                logger.exception("Face recognition WebSocket frame failed")
+                await websocket.send_json(
+                    _websocket_error(
+                        "recognition_failed",
+                        "Face recognition failed",
+                    )
+                )
+            else:
+                await websocket.send_json(_websocket_result(response))
+    except WebSocketDisconnect:
+        return
