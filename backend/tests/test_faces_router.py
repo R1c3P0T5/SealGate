@@ -8,8 +8,10 @@ import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+import src.core.database as db
 from src.auth.utils import create_access_token, hash_password
 from src.core.database import get_session
 from src.faces.engine import get_engine
@@ -85,39 +87,50 @@ async def client_with_face(
 
 @pytest_asyncio.fixture
 async def websocket_client(
-    database_session: AsyncSession,
+    engine: AsyncEngine,
 ) -> AsyncGenerator[TestClient, None]:
     from main import app
 
-    async def override_get_session() -> AsyncGenerator[AsyncSession, None]:
-        yield database_session
-
-    app.dependency_overrides[get_session] = override_get_session
+    db.engine = engine
+    db.async_session = async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autoflush=False,
+    )
 
     with TestClient(app) as test_client:
         yield test_client
 
+    db.engine = None
+    db.async_session = None
     app.dependency_overrides.clear()
 
 
 @pytest_asyncio.fixture
 async def websocket_client_with_face(
-    database_session: AsyncSession,
+    engine: AsyncEngine,
 ) -> AsyncGenerator[TestClient, None]:
     from main import app
 
-    engine = MagicMock()
-    engine.detect_and_embed.return_value = MOCK_EMBEDDING
+    mock_engine = MagicMock()
+    mock_engine.detect_and_embed.return_value = MOCK_EMBEDDING
 
-    async def override_get_session() -> AsyncGenerator[AsyncSession, None]:
-        yield database_session
+    db.engine = engine
+    db.async_session = async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autoflush=False,
+    )
 
-    app.dependency_overrides[get_session] = override_get_session
-    app.dependency_overrides[get_engine] = lambda: engine
+    app.dependency_overrides[get_engine] = lambda: mock_engine
 
     with TestClient(app) as test_client:
         yield test_client
 
+    db.engine = None
+    db.async_session = None
     app.dependency_overrides.clear()
 
 
