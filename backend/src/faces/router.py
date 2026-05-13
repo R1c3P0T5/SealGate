@@ -4,6 +4,7 @@ from uuid import UUID
 import cv2
 import numpy as np
 from fastapi import APIRouter, Depends, Form, Path, Query, UploadFile, status
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.auth.dependencies import get_current_user
 from src.core.access import require_self_or_admin
@@ -13,7 +14,7 @@ from src.core.exceptions import (
     InvalidImageError,
     NoFaceDetectedError,
 )
-from src.faces.engine import EngineDep
+from src.faces.engine import EngineDep, FaceEngine
 from src.faces.models import FaceVector
 from src.faces.schemas import (
     FaceVectorListResponse,
@@ -48,6 +49,22 @@ def _decode_image(data: bytes) -> np.ndarray:
     if image is None:
         raise InvalidImageError()
     return image
+
+
+async def _recognize_image_bytes(
+    data: bytes,
+    session: AsyncSession,
+    engine: FaceEngine,
+) -> RecognizeResponse:
+    image_bgr = _decode_image(data)
+    embedding = engine.detect_and_embed(image_bgr)
+    if embedding is None:
+        raise NoFaceDetectedError()
+    return await recognize_face_vector(
+        embedding,
+        session,
+        get_settings().COSINE_THRESHOLD,
+    )
 
 
 @router.get(
@@ -141,12 +158,4 @@ async def recognize_face_from_image(
     session: SessionDep,
     engine: EngineDep,
 ) -> RecognizeResponse:
-    image_bgr = _decode_image(await image.read())
-    embedding = engine.detect_and_embed(image_bgr)
-    if embedding is None:
-        raise NoFaceDetectedError()
-    return await recognize_face_vector(
-        embedding,
-        session,
-        get_settings().COSINE_THRESHOLD,
-    )
+    return await _recognize_image_bytes(await image.read(), session, engine)
