@@ -6,15 +6,15 @@ from fastapi import APIRouter, Depends, Path, Query, status
 from src.auth.dependencies import get_admin_user, get_current_user
 from src.auth.schemas import UserResponse
 from src.core.database import SessionDep
-from src.core.permissions import require_self_or_permission
+from src.core.permissions import check_access
 from src.permissions.schemas import (
     SetUserPermissionsRequest,
     SetUserRoleRequest,
     UserPermissionsResponse,
 )
 from src.permissions.service import (
-    get_user_permissions_detail,
-    set_user_permission_overrides,
+    permissions_detail,
+    set_overrides,
     set_user_role,
 )
 from src.roles.models import Role
@@ -25,11 +25,11 @@ from src.users.schemas import (
     UserUpdateRequest,
 )
 from src.users.service import (
-    build_user_response,
     delete_user,
     get_user_by_id,
     list_users,
     update_user,
+    user_response,
 )
 
 
@@ -108,9 +108,9 @@ async def get_user(
     session: SessionDep,
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> UserResponse:
-    await require_self_or_permission(current_user, user_id, "users:read", session)
+    await check_access(current_user, user_id, "users:read", session)
     user = await get_user_by_id(user_id, session)
-    return await build_user_response(user, session)
+    return await user_response(user, session)
 
 
 @router.put(
@@ -129,9 +129,9 @@ async def update_user_profile(
     session: SessionDep,
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> UserResponse:
-    await require_self_or_permission(current_user, user_id, "users:write", session)
+    await check_access(current_user, user_id, "users:write", session)
     user = await update_user(user_id, request, session)
-    return await build_user_response(user, session)
+    return await user_response(user, session)
 
 
 @router.delete(
@@ -149,24 +149,24 @@ async def delete_user_profile(
     session: SessionDep,
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> None:
-    await require_self_or_permission(current_user, user_id, "users:write", session)
+    await check_access(current_user, user_id, "users:write", session)
     await delete_user(user_id, session)
 
 
 @router.get("/{user_id}/permissions", response_model=UserPermissionsResponse)
-async def get_user_permissions_endpoint(
+async def user_permissions(
     user_id: Annotated[UUID, Path()],
     session: SessionDep,
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> UserPermissionsResponse:
-    await require_self_or_permission(current_user, user_id, "users:read", session)
+    await check_access(current_user, user_id, "users:read", session)
     user = await get_user_by_id(user_id, session)
-    detail = await get_user_permissions_detail(user, session)
+    detail = await permissions_detail(user, session)
     return UserPermissionsResponse(**detail)
 
 
 @router.put("/{user_id}/permissions", response_model=UserPermissionsResponse)
-async def set_user_permissions_endpoint(
+async def set_permissions(
     user_id: Annotated[UUID, Path()],
     request: SetUserPermissionsRequest,
     session: SessionDep,
@@ -174,13 +174,13 @@ async def set_user_permissions_endpoint(
 ) -> UserPermissionsResponse:
     user = await get_user_by_id(user_id, session)
     overrides = [o.model_dump() for o in request.overrides]
-    await set_user_permission_overrides(user, overrides, session)
-    detail = await get_user_permissions_detail(user, session)
+    await set_overrides(user, overrides, session)
+    detail = await permissions_detail(user, session)
     return UserPermissionsResponse(**detail)
 
 
 @router.put("/{user_id}/role", response_model=UserResponse)
-async def set_user_role_endpoint(
+async def set_role(
     user_id: Annotated[UUID, Path()],
     request: SetUserRoleRequest,
     session: SessionDep,
@@ -188,4 +188,4 @@ async def set_user_role_endpoint(
 ) -> UserResponse:
     user = await get_user_by_id(user_id, session)
     updated_user, _ = await set_user_role(user, request.role_id, session)
-    return await build_user_response(updated_user, session)
+    return await user_response(updated_user, session)

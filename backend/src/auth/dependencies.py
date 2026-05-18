@@ -69,9 +69,9 @@ def require_permission(permission: str) -> Callable[..., object]:
         current_user: Annotated[User, Depends(get_current_user)],
         session: SessionDep,
     ) -> User:
-        from src.core.permissions import get_user_permissions
+        from src.core.permissions import user_permissions
 
-        permissions = await get_user_permissions(current_user, session)
+        permissions = await user_permissions(current_user, session)
         if permission not in permissions:
             raise PermissionDeniedError()
         return current_user

@@ -23,16 +23,14 @@ async def list_roles(
     return total, list(roles)
 
 
-async def get_role_by_id(role_id: UUID, session: AsyncSession) -> Role:
+async def role_by_id(role_id: UUID, session: AsyncSession) -> Role:
     role = await session.get(Role, role_id)
     if role is None:
         raise RoleNotFoundError()
     return role
 
 
-async def get_role_permissions(
-    role_id: UUID, session: AsyncSession
-) -> list[Permission]:
+async def role_permissions(role_id: UUID, session: AsyncSession) -> list[Permission]:
     # WHERE + subquery avoids join onclause which pyright infers as bool
     stmt = select(Permission).where(
         Permission.id.in_(  # type: ignore[attr-defined]
@@ -44,7 +42,7 @@ async def get_role_permissions(
     return list((await session.exec(stmt)).all())
 
 
-async def list_role_users(
+async def role_users(
     role_id: UUID, session: AsyncSession, skip: int = 0, limit: int = 20
 ) -> tuple[int, list[User]]:
     total = (
