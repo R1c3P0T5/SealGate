@@ -3,7 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Path, Query, status
 
-from src.auth.dependencies import get_admin_user, get_current_user, require_permission
+from src.auth.dependencies import get_current_user, require_permission
 from src.auth.schemas import UserResponse
 from src.core.database import SessionDep
 from src.core.permissions import check_access
@@ -68,7 +68,7 @@ async def _full_user_response(user: User, session: SessionDep) -> UserResponseFu
 )
 async def list_users_endpoint(
     session: SessionDep,
-    current_user: Annotated[User, Depends(require_permission("user:create"))],
+    current_user: Annotated[User, Depends(require_permission("user:read"))],
     skip: Annotated[
         int,
         Query(
@@ -108,7 +108,7 @@ async def get_user(
     session: SessionDep,
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> UserResponse:
-    await check_access(current_user, user_id, "users:read", session)
+    await check_access(current_user, user_id, "user:read", session)
     user = await get_user_by_id(user_id, session)
     return await user_response(user, session)
 
@@ -129,7 +129,7 @@ async def update_user_profile(
     session: SessionDep,
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> UserResponse:
-    await check_access(current_user, user_id, "users:write", session)
+    await check_access(current_user, user_id, "user:update", session)
     user = await update_user(user_id, request, session)
     return await user_response(user, session)
 
@@ -159,7 +159,7 @@ async def user_permissions(
     session: SessionDep,
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> UserPermissionsResponse:
-    await check_access(current_user, user_id, "users:read", session)
+    await check_access(current_user, user_id, "user:read", session)
     user = await get_user_by_id(user_id, session)
     detail = await permissions_detail(user, session)
     return UserPermissionsResponse(**detail)
@@ -170,7 +170,7 @@ async def set_permissions(
     user_id: Annotated[UUID, Path()],
     request: SetUserPermissionsRequest,
     session: SessionDep,
-    current_user: Annotated[User, Depends(get_admin_user)],
+    current_user: Annotated[User, Depends(require_permission("user:manage"))],
 ) -> UserPermissionsResponse:
     user = await get_user_by_id(user_id, session)
     overrides = [o.model_dump() for o in request.overrides]
@@ -184,7 +184,7 @@ async def set_role(
     user_id: Annotated[UUID, Path()],
     request: SetUserRoleRequest,
     session: SessionDep,
-    current_user: Annotated[User, Depends(get_admin_user)],
+    current_user: Annotated[User, Depends(require_permission("user:manage"))],
 ) -> UserResponse:
     user = await get_user_by_id(user_id, session)
     updated_user, _ = await set_user_role(user, request.role_id, session)
