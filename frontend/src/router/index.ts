@@ -33,7 +33,18 @@ const router = createRouter({
       component: () => import('@/layouts/AppLayout.vue'),
       children: [
         { path: '', name: 'dashboard', component: () => import('@/views/DashboardView.vue') },
+        {
+          path: 'recognize',
+          name: 'recognize',
+          component: () => import('@/views/LiveRecognitionView.vue'),
+          meta: { adminOnly: true },
+        },
         { path: 'faces', name: 'faces', component: () => import('@/views/FacesView.vue') },
+        {
+          path: 'faces/new',
+          name: 'faces-new',
+          component: () => import('@/views/AddFaceView.vue'),
+        },
         {
           path: 'access-logs',
           name: 'access-logs',
@@ -51,6 +62,7 @@ router.beforeEach((to) => {
 
   if (!auth.isAuthenticated && !isPublic) return { name: 'login' }
   if (auth.isAuthenticated && isPublic) return { name: 'dashboard' }
+  if (to.meta.adminOnly && auth.user?.role !== 'admin') return { name: 'dashboard' }
 })
 
 export default router
