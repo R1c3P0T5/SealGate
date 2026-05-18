@@ -5,24 +5,76 @@ from fastapi.routing import APIRoute
 from httpx import AsyncClient
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from sqlmodel import select
+
 from src.auth.utils import create_access_token, hash_password
 from src.doors.models import Door
-from src.users.models import User, UserRole
+from src.permissions.models import Permission, RolePermission
+from src.roles.models import Role
+from src.users.models import User
+
+
+async def _grant_role_permission(
+    session: AsyncSession, role: Role, permission_name: str
+) -> None:
+    permission = (
+        await session.exec(select(Permission).where(Permission.name == permission_name))
+    ).one_or_none()
+    if permission is None:
+        permission = Permission(name=permission_name)
+        session.add(permission)
+        await session.flush()
+
+    existing = (
+        await session.exec(
+            select(RolePermission).where(
+                RolePermission.role_id == role.id,
+                RolePermission.permission_id == permission.id,
+            )
+        )
+    ).one_or_none()
+    if existing is None:
+        session.add(RolePermission(role_id=role.id, permission_id=permission.id))
+        await session.commit()
 
 
 async def _create_admin_with_token(session: AsyncSession) -> tuple[User, str]:
+    role = (await session.exec(select(Role).where(Role.name == "admin"))).one()
+    for permission_name in ("door:create", "door:update", "door:delete"):
+        await _grant_role_permission(session, role, permission_name)
+
     admin = User(
         username=f"admin_{uuid4().hex[:10]}",
         email=f"admin_{uuid4().hex[:10]}@example.com",
         password_hash=hash_password("AdminPass123!"),
         full_name="Admin User",
-        role=UserRole.ADMIN,
+        role_id=role.id,
         is_active=True,
     )
     session.add(admin)
     await session.commit()
     await session.refresh(admin)
     return admin, create_access_token(admin.id)
+
+
+async def _create_user_with_door_permission(
+    session: AsyncSession, seeded_roles: dict[str, Role], permission_name: str
+) -> tuple[User, str]:
+    role = seeded_roles["user"]
+    await _grant_role_permission(session, role, permission_name)
+
+    user = User(
+        username=f"door_user_{uuid4().hex[:10]}",
+        email=f"door_user_{uuid4().hex[:10]}@example.com",
+        password_hash=hash_password("UserPass123!"),
+        full_name="Door Permission User",
+        role_id=role.id,
+        is_active=True,
+    )
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+    return user, create_access_token(user.id)
 
 
 async def _create_door(
@@ -105,6 +157,7 @@ async def test_create_door_requires_admin(
 async def test_create_door_as_admin_returns_door(
     client: AsyncClient,
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     _, token = await _create_admin_with_token(database_session)
 
@@ -124,9 +177,30 @@ async def test_create_door_as_admin_returns_door(
 
 
 @pytest.mark.asyncio
+async def test_create_door_allows_user_with_create_permission(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
+    _, token = await _create_user_with_door_permission(
+        database_session, seeded_roles, "door:create"
+    )
+
+    response = await client.post(
+        "/api/doors",
+        json={"name": "Permission Door", "mqtt_id": "permission-door"},
+        headers=_auth(token),
+    )
+
+    assert response.status_code == 201
+    assert response.json()["name"] == "Permission Door"
+
+
+@pytest.mark.asyncio
 async def test_create_door_rejects_duplicate_name(
     client: AsyncClient,
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     _, token = await _create_admin_with_token(database_session)
     await _create_door(database_session, name="Unique Door", mqtt_id="unique-door")
@@ -145,6 +219,7 @@ async def test_create_door_rejects_duplicate_name(
 async def test_create_door_rejects_duplicate_mqtt_id(
     client: AsyncClient,
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     _, token = await _create_admin_with_token(database_session)
     await _create_door(database_session, name="First Door", mqtt_id="shared-id")
@@ -163,6 +238,7 @@ async def test_create_door_rejects_duplicate_mqtt_id(
 async def test_update_door_as_admin_applies_change(
     client: AsyncClient,
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     _, token = await _create_admin_with_token(database_session)
     door = await _create_door(database_session, name="Before Update")
@@ -193,6 +269,7 @@ async def test_update_door_requires_admin(
 async def test_delete_door_as_admin_returns_204(
     client: AsyncClient,
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     _, token = await _create_admin_with_token(database_session)
     door = await _create_door(database_session)
@@ -219,6 +296,7 @@ async def test_delete_door_requires_admin(
 async def test_delete_nonexistent_door_returns_404(
     client: AsyncClient,
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     _, token = await _create_admin_with_token(database_session)
 

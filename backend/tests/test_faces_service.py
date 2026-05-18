@@ -152,6 +152,7 @@ async def test_recognize_face_vector_empty_db_returns_unmatched(
 @pytest.mark.asyncio
 async def test_recognize_face_vector_exact_match_returns_matched(
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     user = await _create_user(database_session)
     embedding = np.random.default_rng(42).random(128, dtype=np.float32).tobytes()
@@ -168,6 +169,7 @@ async def test_recognize_face_vector_exact_match_returns_matched(
 @pytest.mark.asyncio
 async def test_recognize_face_vector_below_threshold_returns_unmatched(
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     user = await _create_user(database_session)
     stored_arr = (np.ones(128, dtype=np.float32) / np.float32(np.sqrt(128))).astype(

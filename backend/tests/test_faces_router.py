@@ -294,6 +294,7 @@ async def test_from_image_register_no_face_returns_400(
 async def test_from_image_register_invalid_image_returns_400(
     client: AsyncClient,
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     user, token = await _create_user_with_token(database_session)
 
@@ -311,6 +312,7 @@ async def test_from_image_register_invalid_image_returns_400(
 async def test_from_image_register_with_face_stores_embedding(
     client_with_face: AsyncClient,
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     user, token = await _create_user_with_token(database_session)
 
@@ -331,6 +333,7 @@ async def test_from_image_register_with_face_stores_embedding(
 async def test_add_face_from_image_offloads_face_engine_to_threadpool(
     client_with_face: AsyncClient,
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import src.faces.router as router
@@ -383,6 +386,7 @@ async def test_recognize_from_image_requires_no_auth(
 async def test_recognize_from_image_matched(
     client_with_face: AsyncClient,
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     user, _ = await _create_user_with_token(database_session)
     await add_face_vector(user.id, MOCK_EMBEDDING, "front", database_session)
@@ -403,6 +407,7 @@ async def test_recognize_from_image_matched(
 @pytest.mark.asyncio
 async def test_recognize_image_bytes_offloads_face_engine_to_threadpool(
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import src.faces.router as router
