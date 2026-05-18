@@ -3,7 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Path, Query, status
 
-from src.auth.dependencies import get_admin_user
+from src.auth.dependencies import require_permission
 from src.core.database import SessionDep
 from src.doors.schemas import (
     DoorCreateRequest,
@@ -78,7 +78,7 @@ async def get_door_endpoint(
 async def create_door_endpoint(
     request: DoorCreateRequest,
     session: SessionDep,
-    current_user: Annotated[User, Depends(get_admin_user)],
+    current_user: Annotated[User, Depends(require_permission("door:create"))],
 ) -> DoorResponse:
     door = await create_door(request, session)
     return _to_response(door)
@@ -94,7 +94,7 @@ async def update_door_endpoint(
     door_id: Annotated[UUID, Path(description="Door ID to update.")],
     request: DoorUpdateRequest,
     session: SessionDep,
-    current_user: Annotated[User, Depends(get_admin_user)],
+    current_user: Annotated[User, Depends(require_permission("door:update"))],
 ) -> DoorResponse:
     door = await update_door(door_id, request, session)
     return _to_response(door)
@@ -109,6 +109,6 @@ async def update_door_endpoint(
 async def delete_door_endpoint(
     door_id: Annotated[UUID, Path(description="Door ID to delete.")],
     session: SessionDep,
-    current_user: Annotated[User, Depends(get_admin_user)],
+    current_user: Annotated[User, Depends(require_permission("door:delete"))],
 ) -> None:
     await delete_door(door_id, session)
