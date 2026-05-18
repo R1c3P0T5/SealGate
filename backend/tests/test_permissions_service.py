@@ -57,7 +57,7 @@ async def test_get_user_permissions_returns_role_defaults(
         username=f"u_{uuid4().hex[:8]}",
         password_hash="h",
         full_name="Test",
-        role_id=roles_and_perms["user_role"].id,  # type: ignore[call-arg]  # added in Task 5
+        role_id=roles_and_perms["user_role"].id,
     )
     database_session.add(user)
     await database_session.commit()
@@ -80,7 +80,7 @@ async def test_override_granted_adds_permission_not_in_role(
         username=f"u_{uuid4().hex[:8]}",
         password_hash="h",
         full_name="Test",
-        role_id=roles_and_perms["user_role"].id,  # type: ignore[call-arg]  # added in Task 5
+        role_id=roles_and_perms["user_role"].id,
     )
     database_session.add(user)
     await database_session.flush()
@@ -109,7 +109,7 @@ async def test_override_revoked_removes_permission_from_role(
         username=f"u_{uuid4().hex[:8]}",
         password_hash="h",
         full_name="Test",
-        role_id=roles_and_perms["user_role"].id,  # type: ignore[call-arg]  # added in Task 5
+        role_id=roles_and_perms["user_role"].id,
     )
     database_session.add(user)
     await database_session.flush()

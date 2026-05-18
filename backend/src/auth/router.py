@@ -13,10 +13,26 @@ from src.auth.schemas import (
 )
 from src.auth.service import authenticate_user, register_user
 from src.core.database import SessionDep
+from src.roles.models import Role
 from src.users.models import User
 
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+
+async def _user_response(user: User, session: SessionDep) -> UserResponse:
+    role = await session.get(Role, user.role_id)
+    if role is None:
+        raise RuntimeError("User role seed data is missing.")
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        full_name=user.full_name,
+        role_name=role.name,
+        is_active=user.is_active,
+        created_at=user.created_at,
+    )
 
 
 @router.post(
@@ -34,8 +50,9 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 async def register(
     request: UserRegisterRequest,
     session: SessionDep,
-) -> User:
-    return await register_user(request, session)
+) -> UserResponse:
+    user = await register_user(request, session)
+    return await _user_response(user, session)
 
 
 @router.post(
@@ -56,7 +73,7 @@ async def login(
     return LoginResponse(
         access_token=token,
         token_type="bearer",
-        user=UserResponse.model_validate(user),
+        user=await _user_response(user, session),
     )
 
 
@@ -93,5 +110,6 @@ async def token(
 )
 async def get_current_user_info(
     current_user: Annotated[User, Depends(get_current_user)],
-) -> User:
-    return current_user
+    session: SessionDep,
+) -> UserResponse:
+    return await _user_response(current_user, session)

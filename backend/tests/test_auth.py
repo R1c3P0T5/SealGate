@@ -2,11 +2,14 @@ import pytest
 from httpx import AsyncClient
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from src.roles.models import Role
 from src.users.models import User
 
 
 @pytest.mark.asyncio
-async def test_register_success(client: AsyncClient) -> None:
+async def test_register_success(
+    client: AsyncClient, seeded_roles: dict[str, Role]
+) -> None:
     response = await client.post(
         "/api/auth/register",
         json={
@@ -22,7 +25,7 @@ async def test_register_success(client: AsyncClient) -> None:
     assert data["username"] == "newuser"
     assert data["email"] == "newuser@example.com"
     assert data["full_name"] == "New User"
-    assert data["role"] == "user"
+    assert data["role_name"] == "user"
     assert "password" not in data
     assert "password_hash" not in data
 

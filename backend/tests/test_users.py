@@ -2,10 +2,12 @@ from uuid import uuid4
 
 import pytest
 from httpx import AsyncClient
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.auth.utils import hash_password
-from src.users.models import User, UserRole
+from src.roles.models import Role
+from src.users.models import User
 
 
 async def get_token(client: AsyncClient, username: str, password: str) -> str:
@@ -22,15 +24,18 @@ async def create_user(
     *,
     username: str | None = None,
     password: str = "UserPassword123",
-    role: UserRole = UserRole.USER,
+    role_name: str = "user",
 ) -> User:
     username = username or f"user_{uuid4().hex[:12]}"
+    role = (
+        await database_session.exec(select(Role).where(Role.name == role_name))
+    ).one()
     user = User(
         username=username,
         email=f"{username}@example.com",
         password_hash=hash_password(password),
         full_name="API User",
-        role=role,
+        role_id=role.id,
         is_active=True,
     )
     database_session.add(user)
@@ -53,8 +58,8 @@ async def test_get_user(client: AsyncClient, test_user: User) -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_user_not_found(client: AsyncClient, test_user: User) -> None:
-    token = await get_token(client, test_user.username, "TestPassword123")
+async def test_get_user_not_found(client: AsyncClient, test_admin: User) -> None:
+    token = await get_token(client, test_admin.username, "AdminPassword123")
 
     response = await client.get(
         f"/api/users/{uuid4()}",
@@ -85,6 +90,7 @@ async def test_update_other_user_forbidden(
     client: AsyncClient,
     database_session: AsyncSession,
     test_user: User,
+    seeded_roles: dict[str, Role],
 ) -> None:
     other_user = await create_user(database_session)
     token = await get_token(client, test_user.username, "TestPassword123")
@@ -157,6 +163,7 @@ async def test_list_users_pagination(
     client: AsyncClient,
     database_session: AsyncSession,
     test_admin: User,
+    seeded_roles: dict[str, Role],
 ) -> None:
     await create_user(database_session, username="firstuser")
     await create_user(database_session, username="seconduser")

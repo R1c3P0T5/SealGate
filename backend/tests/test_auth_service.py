@@ -11,12 +11,14 @@ from src.core.exceptions import (
     UserNotFoundError,
     UsernameAlreadyExistsError,
 )
-from src.users.models import User, UserRole
+from src.roles.models import Role
+from src.users.models import User
 
 
 @pytest.mark.asyncio
 async def test_register_user_hashes_password_and_persists_user(
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     from src.auth.service import register_user
 
@@ -33,13 +35,14 @@ async def test_register_user_hashes_password_and_persists_user(
     assert user.id is not None
     assert user.username == username
     assert user.password_hash != request.password
-    assert user.role == UserRole.USER
+    assert user.role_id == seeded_roles["user"].id
     assert user.is_active is True
 
 
 @pytest.mark.asyncio
 async def test_register_user_rejects_duplicate_username(
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     from src.auth.service import register_user
 
@@ -58,6 +61,7 @@ async def test_register_user_rejects_duplicate_username(
 @pytest.mark.asyncio
 async def test_authenticate_user_returns_user_and_access_token(
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     from src.auth.service import authenticate_user
 
@@ -66,6 +70,7 @@ async def test_authenticate_user_returns_user_and_access_token(
         username=f"login_{uuid4().hex}",
         password_hash=hash_password(password),
         full_name="Login User",
+        role_id=seeded_roles["user"].id,
     )
     database_session.add(user)
     await database_session.commit()
@@ -85,6 +90,7 @@ async def test_authenticate_user_returns_user_and_access_token(
 @pytest.mark.asyncio
 async def test_authenticate_user_rejects_bad_password(
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     from src.auth.service import authenticate_user
 
@@ -92,6 +98,7 @@ async def test_authenticate_user_rejects_bad_password(
         username=f"bad_password_{uuid4().hex}",
         password_hash=hash_password("MySecurePass123"),
         full_name="Bad Password",
+        role_id=seeded_roles["user"].id,
     )
     database_session.add(user)
     await database_session.commit()
@@ -106,6 +113,7 @@ async def test_authenticate_user_rejects_bad_password(
 @pytest.mark.asyncio
 async def test_authenticate_user_rejects_inactive_user(
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     from src.auth.service import authenticate_user
 
@@ -114,6 +122,7 @@ async def test_authenticate_user_rejects_inactive_user(
         username=f"inactive_login_{uuid4().hex}",
         password_hash=hash_password(password),
         full_name="Inactive Login",
+        role_id=seeded_roles["user"].id,
         is_active=False,
     )
     database_session.add(user)

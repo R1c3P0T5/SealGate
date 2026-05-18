@@ -6,6 +6,8 @@ from fastapi import APIRouter, Depends, Path, Query, status
 from src.auth.dependencies import get_admin_user, get_current_user
 from src.auth.schemas import UserResponse
 from src.core.database import SessionDep
+from src.core.permissions import require_self_or_permission
+from src.roles.models import Role
 from src.users.models import User
 from src.users.schemas import (
     UserListResponse,
@@ -23,13 +25,32 @@ from src.users.service import (
 router = APIRouter(prefix="/api/users", tags=["users"])
 
 
-def _full_user_response(user: User) -> UserResponseFull:
+async def _role_name(user: User, session: SessionDep) -> str:
+    role = await session.get(Role, user.role_id)
+    if role is None:
+        raise RuntimeError("User role seed data is missing.")
+    return role.name
+
+
+async def _user_response(user: User, session: SessionDep) -> UserResponse:
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        full_name=user.full_name,
+        role_name=await _role_name(user, session),
+        is_active=user.is_active,
+        created_at=user.created_at,
+    )
+
+
+async def _full_user_response(user: User, session: SessionDep) -> UserResponseFull:
     return UserResponseFull(
         id=user.id,
         username=user.username,
         email=user.email,
         full_name=user.full_name,
-        role=user.role,
+        role_name=await _role_name(user, session),
         is_active=user.is_active,
         created_at=user.created_at,
         updated_at=user.updated_at,
@@ -70,7 +91,7 @@ async def list_users_endpoint(
         total=total,
         skip=skip,
         limit=limit,
-        users=[_full_user_response(user) for user in users],
+        users=[await _full_user_response(user, session) for user in users],
     )
 
 
@@ -87,8 +108,10 @@ async def get_user(
     user_id: Annotated[UUID, Path(description="User ID to fetch.")],
     session: SessionDep,
     current_user: Annotated[User, Depends(get_current_user)],
-) -> User:
-    return await get_user_by_id(user_id, session)
+) -> UserResponse:
+    await require_self_or_permission(current_user, user_id, "users:read", session)
+    user = await get_user_by_id(user_id, session)
+    return await _user_response(user, session)
 
 
 @router.put(
@@ -106,8 +129,10 @@ async def update_user_profile(
     request: UserUpdateRequest,
     session: SessionDep,
     current_user: Annotated[User, Depends(get_current_user)],
-) -> User:
-    return await update_user(user_id, request, session, current_user)
+) -> UserResponse:
+    await require_self_or_permission(current_user, user_id, "users:write", session)
+    user = await update_user(user_id, request, session)
+    return await _user_response(user, session)
 
 
 @router.delete(
@@ -125,4 +150,5 @@ async def delete_user_profile(
     session: SessionDep,
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> None:
-    await delete_user(user_id, session, current_user)
+    await require_self_or_permission(current_user, user_id, "users:write", session)
+    await delete_user(user_id, session)

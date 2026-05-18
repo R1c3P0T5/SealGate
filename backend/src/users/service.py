@@ -5,7 +5,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.core.access import require_self_or_admin
 from src.core.exceptions import (
     EmailAlreadyInUseError,
     UserNotFoundError,
@@ -26,9 +25,7 @@ async def update_user(
     user_id: UUID,
     request: UserUpdateRequest,
     session: AsyncSession,
-    current_user: User,
 ) -> User:
-    require_self_or_admin(current_user, user_id)
     user = await get_user_by_id(user_id, session)
 
     if request.full_name is not None:
@@ -53,9 +50,7 @@ async def update_user(
 async def delete_user(
     user_id: UUID,
     session: AsyncSession,
-    current_user: User,
 ) -> None:
-    require_self_or_admin(current_user, user_id)
     user = await get_user_by_id(user_id, session)
 
     await session.delete(user)

@@ -5,7 +5,8 @@ from sqlmodel import select
 import src.core.database as db
 from main import app, create_app, lifespan
 from src.core.config import get_settings
-from src.users.models import User, UserRole
+from src.roles.models import Role
+from src.users.models import User
 
 
 def test_create_app_returns_configured_fastapi_app() -> None:
@@ -94,8 +95,9 @@ async def test_lifespan_seeds_configured_default_admin(
             admin = (
                 await session.exec(select(User).where(User.username == "startup_admin"))
             ).one()
-
-    assert admin.role == UserRole.ADMIN
+            role = await session.get(Role, admin.role_id)
+            assert role is not None
+            assert role.name == "admin"
 
 
 @pytest.mark.asyncio

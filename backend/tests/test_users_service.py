@@ -1,14 +1,15 @@
 from uuid import UUID, uuid4
 
 import pytest
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.core.exceptions import (
     EmailAlreadyInUseError,
-    PermissionDeniedError,
     UserNotFoundError,
 )
-from src.users.models import User, UserRole
+from src.roles.models import Role
+from src.users.models import User
 from src.users.schemas import UserUpdateRequest
 
 
@@ -17,14 +18,15 @@ async def create_user(
     *,
     username: str | None = None,
     email: str | None = None,
-    role: UserRole = UserRole.USER,
+    role_name: str = "user",
 ) -> User:
+    role = (await session.exec(select(Role).where(Role.name == role_name))).one()
     user = User(
         username=username or f"user_{uuid4().hex[:12]}",
         email=email,
         password_hash="hash",
         full_name="Original Name",
-        role=role,
+        role_id=role.id,
     )
     session.add(user)
     await session.commit()
@@ -35,6 +37,7 @@ async def create_user(
 @pytest.mark.asyncio
 async def test_get_user_by_id_returns_existing_user(
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     from src.users.service import get_user_by_id
 
@@ -48,6 +51,7 @@ async def test_get_user_by_id_returns_existing_user(
 @pytest.mark.asyncio
 async def test_update_user_allows_self_and_updates_timestamp(
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     from src.users.service import update_user
 
@@ -58,7 +62,6 @@ async def test_update_user_allows_self_and_updates_timestamp(
         user.id,
         UserUpdateRequest(full_name="Updated Name"),
         database_session,
-        user,
     )
 
     assert result.full_name == "Updated Name"
@@ -66,12 +69,12 @@ async def test_update_user_allows_self_and_updates_timestamp(
 
 
 @pytest.mark.asyncio
-async def test_update_user_allows_admin_to_update_another_user(
+async def test_update_user_updates_requested_user(
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     from src.users.service import update_user
 
-    admin = await create_user(database_session, role=UserRole.ADMIN)
     user = await create_user(database_session)
 
     result = await update_user(
@@ -81,7 +84,6 @@ async def test_update_user_allows_admin_to_update_another_user(
             email=f"{uuid4().hex[:12]}@example.com",
         ),
         database_session,
-        admin,
     )
 
     assert result.id == user.id
@@ -89,26 +91,10 @@ async def test_update_user_allows_admin_to_update_another_user(
 
 
 @pytest.mark.asyncio
-async def test_update_user_rejects_non_owner(
-    database_session: AsyncSession,
-) -> None:
-    from src.users.service import update_user
-
-    current_user = await create_user(database_session)
-    target_user = await create_user(database_session)
-
-    with pytest.raises(PermissionDeniedError):
-        await update_user(
-            target_user.id,
-            UserUpdateRequest(full_name="Nope"),
-            database_session,
-            current_user,
-        )
-
-
 @pytest.mark.asyncio
 async def test_update_user_rejects_duplicate_email(
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     from src.users.service import update_user
 
@@ -121,20 +107,19 @@ async def test_update_user_rejects_duplicate_email(
             user.id,
             UserUpdateRequest(full_name=None, email=email),
             database_session,
-            user,
         )
 
 
 @pytest.mark.asyncio
-async def test_delete_user_allows_admin_to_delete_user(
+async def test_delete_user_deletes_user(
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     from src.users.service import delete_user, get_user_by_id
 
-    admin = await create_user(database_session, role=UserRole.ADMIN)
     user = await create_user(database_session)
 
-    assert await delete_user(user.id, database_session, admin) is None
+    assert await delete_user(user.id, database_session) is None
 
     with pytest.raises(UserNotFoundError):
         await get_user_by_id(user.id, database_session)
@@ -143,6 +128,7 @@ async def test_delete_user_allows_admin_to_delete_user(
 @pytest.mark.asyncio
 async def test_list_users_returns_total_and_paginated_users(
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     from src.users.service import list_users
 

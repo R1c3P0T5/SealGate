@@ -16,7 +16,13 @@ from src.core.config import get_settings
 from src.core.database import get_session
 from src.faces.models import FaceVector as _FaceVector  # noqa: F401
 from src.doors.models import Door as _Door  # noqa: F401
-from src.users.models import User, UserRole
+from src.permissions.models import (  # noqa: F401
+    Permission,
+    RolePermission,
+    UserPermissionOverride,
+)
+from src.roles.models import Role
+from src.users.models import User
 
 
 @pytest.fixture(autouse=True)
@@ -81,13 +87,51 @@ async def client(
 
 
 @pytest_asyncio.fixture
-async def test_user(database_session: AsyncSession) -> User:
+async def seeded_roles(database_session: AsyncSession) -> dict[str, Role]:
+    admin_role = Role(name="admin")
+    user_role = Role(name="user")
+    database_session.add(admin_role)
+    database_session.add(user_role)
+    await database_session.flush()
+
+    permission_names = [
+        "door:open",
+        "door:read",
+        "door:lock",
+        "door:unlock",
+        "log:read",
+        "log:delete",
+        "face:create",
+        "face:read",
+        "face:delete",
+        "users:read",
+        "users:write",
+    ]
+    permissions = [Permission(name=name) for name in permission_names]
+    database_session.add_all(permissions)
+    await database_session.flush()
+    for permission in permissions:
+        database_session.add(
+            RolePermission(role_id=admin_role.id, permission_id=permission.id)
+        )
+
+    await database_session.commit()
+    await database_session.refresh(admin_role)
+    await database_session.refresh(user_role)
+    return {"admin": admin_role, "user": user_role}
+
+
+@pytest_asyncio.fixture
+async def test_user(
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> User:
     user = User(
         username="testuser",
         email="testuser@example.com",
         password_hash=hash_password("TestPassword123"),
         full_name="Test User",
-        role=UserRole.USER,
+        role_id=seeded_roles["user"].id,
         is_active=True,
     )
     database_session.add(user)
@@ -97,13 +141,16 @@ async def test_user(database_session: AsyncSession) -> User:
 
 
 @pytest_asyncio.fixture
-async def test_admin(database_session: AsyncSession) -> User:
+async def test_admin(
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> User:
     admin = User(
         username="admin",
         email="admin@example.com",
         password_hash=hash_password("AdminPassword123"),
         full_name="Admin User",
-        role=UserRole.ADMIN,
+        role_id=seeded_roles["admin"].id,
         is_active=True,
     )
     database_session.add(admin)

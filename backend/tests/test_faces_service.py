@@ -2,6 +2,7 @@ from uuid import uuid4
 
 import numpy as np
 import pytest
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.core.exceptions import FaceVectorNotFoundError
@@ -13,7 +14,8 @@ from src.faces.service import (
     list_face_vectors,
     recognize_face_vector,
 )
-from src.users.models import User, UserRole
+from src.roles.models import Role
+from src.users.models import User
 
 
 def _make_embedding() -> bytes:
@@ -21,12 +23,13 @@ def _make_embedding() -> bytes:
 
 
 async def _create_user(session: AsyncSession) -> User:
+    role = (await session.exec(select(Role).where(Role.name == "user"))).one()
     user = User(
         username=f"user_{uuid4().hex[:12]}",
         email=f"{uuid4().hex[:12]}@example.com",
         password_hash="hash",
         full_name="Test User",
-        role=UserRole.USER,
+        role_id=role.id,
     )
     session.add(user)
     await session.commit()
@@ -35,7 +38,9 @@ async def _create_user(session: AsyncSession) -> User:
 
 
 @pytest.mark.asyncio
-async def test_list_face_vectors_empty(database_session: AsyncSession) -> None:
+async def test_list_face_vectors_empty(
+    database_session: AsyncSession, seeded_roles: dict[str, Role]
+) -> None:
     user = await _create_user(database_session)
 
     total, faces = await list_face_vectors(user.id, database_session)
@@ -47,6 +52,7 @@ async def test_list_face_vectors_empty(database_session: AsyncSession) -> None:
 @pytest.mark.asyncio
 async def test_add_face_vector_stores_embedding(
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     user = await _create_user(database_session)
     embedding = _make_embedding()
@@ -61,7 +67,9 @@ async def test_add_face_vector_stores_embedding(
 
 
 @pytest.mark.asyncio
-async def test_add_face_vector_null_label(database_session: AsyncSession) -> None:
+async def test_add_face_vector_null_label(
+    database_session: AsyncSession, seeded_roles: dict[str, Role]
+) -> None:
     user = await _create_user(database_session)
     embedding = _make_embedding()
 
@@ -75,6 +83,7 @@ async def test_add_face_vector_null_label(database_session: AsyncSession) -> Non
 @pytest.mark.asyncio
 async def test_list_face_vectors_returns_all_for_user(
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     user = await _create_user(database_session)
     other_user = await _create_user(database_session)
@@ -89,7 +98,9 @@ async def test_list_face_vectors_returns_all_for_user(
 
 
 @pytest.mark.asyncio
-async def test_delete_face_vector_removes_it(database_session: AsyncSession) -> None:
+async def test_delete_face_vector_removes_it(
+    database_session: AsyncSession, seeded_roles: dict[str, Role]
+) -> None:
     user = await _create_user(database_session)
     face = await add_face_vector(user.id, _make_embedding(), "正面", database_session)
 
@@ -103,6 +114,7 @@ async def test_delete_face_vector_removes_it(database_session: AsyncSession) -> 
 @pytest.mark.asyncio
 async def test_delete_face_vector_wrong_user_raises(
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     user = await _create_user(database_session)
     other_user = await _create_user(database_session)
@@ -114,7 +126,7 @@ async def test_delete_face_vector_wrong_user_raises(
 
 @pytest.mark.asyncio
 async def test_delete_nonexistent_face_vector_raises(
-    database_session: AsyncSession,
+    database_session: AsyncSession, seeded_roles: dict[str, Role]
 ) -> None:
     user = await _create_user(database_session)
 

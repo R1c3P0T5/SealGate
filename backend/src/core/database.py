@@ -66,15 +66,15 @@ async def seed_roles_and_permissions() -> None:
     _ALL_PERMISSIONS: list[tuple[str, str]] = [
         ("face:create", "Create face vectors"),
         ("face:read", "Read face vectors"),
-        ("face:update", "Update face vectors"),
         ("face:delete", "Delete face vectors"),
-        ("user:create", "Create users"),
-        ("user:read", "Read user profiles"),
-        ("user:update", "Update user profiles"),
-        ("user:delete", "Delete users"),
+        ("users:read", "Read user profiles"),
+        ("users:write", "Create, update, and delete users"),
         ("door:open", "Trigger door open"),
         ("door:read", "Read door information"),
+        ("door:lock", "Lock door"),
+        ("door:unlock", "Unlock door"),
         ("log:read", "Read access logs"),
+        ("log:delete", "Delete access logs"),
     ]
     _ROLE_PERMISSIONS: dict[str, set[str]] = {
         "admin": {p for p, _ in _ALL_PERMISSIONS},
