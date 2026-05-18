@@ -14,22 +14,6 @@ depends_on: Union[str, Sequence[str], None] = None
 _ADMIN_ROLE_ID = str(uuid.uuid4())
 _USER_ROLE_ID = str(uuid.uuid4())
 
-_ALL_PERMISSIONS = [
-    ("face:create", "Create face vectors"),
-    ("face:read", "Read face vectors"),
-    ("face:update", "Update face vectors"),
-    ("face:delete", "Delete face vectors"),
-    ("user:create", "Create users"),
-    ("user:read", "Read user profiles"),
-    ("user:update", "Update user profiles"),
-    ("user:delete", "Delete users"),
-    ("door:open", "Trigger door open"),
-    ("door:read", "Read door information"),
-    ("log:read", "Read access logs"),
-]
-
-_USER_PERMISSIONS = {"door:open", "door:read", "log:read"}
-
 
 def upgrade() -> None:
     op.create_table(
@@ -85,35 +69,11 @@ def upgrade() -> None:
         f"('{_USER_ROLE_ID}', 'user', 'Standard user', '{now}')"
     )
 
-    perm_ids: dict[str, str] = {}
-    for name, description in _ALL_PERMISSIONS:
-        perm_id = str(uuid.uuid4())
-        perm_ids[name] = perm_id
-        op.execute(
-            f"INSERT INTO permission (id, name, description) VALUES "
-            f"('{perm_id}', '{name}', '{description}')"
-        )
-
-    for name, perm_id in perm_ids.items():
-        op.execute(
-            f"INSERT INTO rolepermission (role_id, permission_id) VALUES "
-            f"('{_ADMIN_ROLE_ID}', '{perm_id}')"
-        )
-        if name in _USER_PERMISSIONS:
-            op.execute(
-                f"INSERT INTO rolepermission (role_id, permission_id) VALUES "
-                f"('{_USER_ROLE_ID}', '{perm_id}')"
-            )
-
     with op.batch_alter_table("user") as batch_op:
         batch_op.add_column(sa.Column("role_id", sa.Uuid(), nullable=True))
 
-    op.execute(
-        f"UPDATE \"user\" SET role_id = '{_ADMIN_ROLE_ID}' WHERE role = 'admin'"
-    )
-    op.execute(
-        f"UPDATE \"user\" SET role_id = '{_USER_ROLE_ID}' WHERE role = 'user'"
-    )
+    op.execute(f"UPDATE \"user\" SET role_id = '{_ADMIN_ROLE_ID}' WHERE role = 'admin'")
+    op.execute(f"UPDATE \"user\" SET role_id = '{_USER_ROLE_ID}' WHERE role = 'user'")
 
     with op.batch_alter_table("user") as batch_op:
         batch_op.alter_column("role_id", nullable=False)
