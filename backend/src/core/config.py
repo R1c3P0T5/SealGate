@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     FACE_RECOGNIZER_MODEL: Path = Path("models/face_recognition_sface_2021dec.onnx")
     COSINE_THRESHOLD: float = 0.363
     WEBSOCKET_MAX_IMAGE_BYTES: int = 2_000_000
+    JETSON_CAMERA_TOKEN: str | None = None
 
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
 

@@ -96,3 +96,17 @@ async def test_lifespan_seeds_configured_default_admin(
             ).one()
 
     assert admin.role == UserRole.ADMIN
+
+
+@pytest.mark.asyncio
+async def test_lifespan_warns_when_jetson_camera_token_missing(
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("JETSON_CAMERA_TOKEN", raising=False)
+    get_settings.cache_clear()
+
+    async with lifespan(create_app()):
+        pass
+
+    assert "JETSON_CAMERA_TOKEN is not configured" in caplog.text
