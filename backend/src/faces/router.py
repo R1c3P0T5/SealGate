@@ -1,4 +1,5 @@
 import logging
+from hmac import compare_digest
 from typing import Annotated
 from uuid import UUID
 
@@ -86,6 +87,24 @@ def _websocket_error(error: str, detail: str) -> dict[str, object]:
 
 def _websocket_result(response: RecognizeResponse) -> dict[str, object]:
     return {"type": "result", **response.model_dump(mode="json")}
+
+
+def _bearer_token(authorization: str | None) -> str | None:
+    if authorization is None:
+        return None
+    scheme, separator, token = authorization.partition(" ")
+    if separator and scheme.lower() == "bearer" and token:
+        return token
+    return None
+
+
+def _is_valid_device_token(candidate: str | None, expected: str | None) -> bool:
+    return bool(candidate and expected and compare_digest(candidate, expected))
+
+
+async def _close_websocket_policy_violation(websocket: WebSocket) -> None:
+    await websocket.accept()
+    await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
 
 
 @router.get(
@@ -196,6 +215,21 @@ async def recognize_faces_websocket(
     max_image_bytes = settings.WEBSOCKET_MAX_IMAGE_BYTES
     threshold = settings.COSINE_THRESHOLD
 
+    if settings.JETSON_CAMERA_TOKEN is None:
+        logger.debug(
+            "JETSON_CAMERA_TOKEN is not configured; rejecting recognition "
+            "WebSocket connection."
+        )
+        await _close_websocket_policy_violation(websocket)
+        return
+
+    if not _is_valid_device_token(
+        _bearer_token(websocket.headers.get("authorization")),
+        settings.JETSON_CAMERA_TOKEN,
+    ):
+        await _close_websocket_policy_violation(websocket)
+        return
+
     await websocket.accept()
     try:
         while True:
@@ -232,16 +266,9 @@ async def recognize_faces_websocket(
                     )
             except InvalidImageError as exc:
                 await websocket.send_json(_websocket_error("invalid_image", exc.detail))
-            except NoFaceDetectedError:
+            except NoFaceDetectedError as exc:
                 await websocket.send_json(
-                    _websocket_result(
-                        RecognizeResponse(
-                            matched=False,
-                            user_id=None,
-                            username=None,
-                            confidence=0.0,
-                        )
-                    )
+                    _websocket_error("no_face_detected", exc.detail)
                 )
             except Exception:
                 logger.exception("Face recognition WebSocket frame failed")

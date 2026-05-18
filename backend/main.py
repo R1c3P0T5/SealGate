@@ -1,5 +1,6 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,14 +14,22 @@ from src.doors.router import router as doors_router
 from src.faces.router import router as faces_router
 from src.users.router import router as users_router
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    settings = get_settings()
+    if settings.JETSON_CAMERA_TOKEN is None:
+        logger.warning(
+            "JETSON_CAMERA_TOKEN is not configured; recognition WebSocket "
+            "connections will be rejected."
+        )
     await db.init_db()
     await db.create_db_and_tables()
     await face_engine.load_engine()
     async with db.session_context() as session:
-        await ensure_default_admin(get_settings(), session)
+        await ensure_default_admin(settings, session)
     try:
         yield
     finally:
