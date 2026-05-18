@@ -3,7 +3,6 @@ from uuid import UUID
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.core.permissions import get_user_permissions
 from src.permissions.models import Permission, RolePermission, UserPermissionOverride
 from src.roles.models import Role
 from src.users.models import User
@@ -14,13 +13,11 @@ async def list_all_permissions(session: AsyncSession) -> list[Permission]:
 
 
 async def get_user_permissions_detail(user: User, session: AsyncSession) -> dict:
-    role_id = user.role_id  # type: ignore[attr-defined]
-
     # WHERE + subquery to avoid join onclause pyright bool-inference issue
     role_stmt = select(Permission.name).where(
         Permission.id.in_(  # type: ignore[attr-defined]
             select(RolePermission.permission_id).where(
-                RolePermission.role_id == role_id
+                RolePermission.role_id == user.role_id  # type: ignore[attr-defined]
             )
         )
     )
@@ -30,12 +27,17 @@ async def get_user_permissions_detail(user: User, session: AsyncSession) -> dict
         UserPermissionOverride.user_id == user.id,
         UserPermissionOverride.permission_id == Permission.id,  # type: ignore[arg-type]
     )
+    overrides_raw = list((await session.exec(override_stmt)).all())
     overrides = [
-        {"permission": name, "granted": granted}
-        for name, granted in (await session.exec(override_stmt)).all()
+        {"permission": name, "granted": granted} for name, granted in overrides_raw
     ]
 
-    effective = await get_user_permissions(user, session)
+    effective: set[str] = set(role_perms)
+    for name, granted in overrides_raw:
+        if granted:
+            effective.add(name)
+        else:
+            effective.discard(name)
 
     return {
         "effective": sorted(effective),
@@ -60,25 +62,33 @@ async def set_user_permission_overrides(
         await session.delete(o)
     await session.flush()
 
-    for item in overrides:
-        perm = (
+    if overrides:
+        perm_names = [item["permission"] for item in overrides]
+        perm_rows = (
             await session.exec(
-                select(Permission).where(Permission.name == item["permission"])
+                select(Permission).where(Permission.name.in_(perm_names))  # type: ignore[attr-defined]
             )
-        ).one_or_none()
-        if perm is None:
+        ).all()
+        perm_map = {p.name: p for p in perm_rows}
+
+        unknown = set(perm_names) - perm_map.keys()
+        if unknown:
             from src.core.exceptions import BaseAPIError
 
             raise BaseAPIError(
-                detail=f"Unknown permission: {item['permission']}", status_code=400
+                detail=f"Unknown permission(s): {', '.join(sorted(unknown))}",
+                status_code=400,
             )
-        session.add(
-            UserPermissionOverride(
-                user_id=user.id,
-                permission_id=perm.id,
-                granted=item["granted"],
+
+        for item in overrides:
+            session.add(
+                UserPermissionOverride(
+                    user_id=user.id,
+                    permission_id=perm_map[item["permission"]].id,
+                    granted=item["granted"],
+                )
             )
-        )
+
     await session.commit()
 
 
