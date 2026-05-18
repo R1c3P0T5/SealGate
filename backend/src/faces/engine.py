@@ -7,9 +7,6 @@ from fastapi import Depends
 
 from src.core.config import get_settings
 
-EMBEDDING_DIM = 128
-EMBEDDING_BYTES = EMBEDDING_DIM * 4
-
 
 class FaceEngine:
     def __init__(self, detector_model: Path, recognizer_model: Path) -> None:

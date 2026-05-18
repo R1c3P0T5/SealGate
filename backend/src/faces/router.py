@@ -16,6 +16,7 @@ from fastapi import (
     status,
 )
 from sqlmodel.ext.asyncio.session import AsyncSession
+from starlette.concurrency import run_in_threadpool
 from starlette.websockets import WebSocketDisconnect
 
 from src.auth.dependencies import get_current_user
@@ -70,8 +71,10 @@ async def _recognize_image_bytes(
     engine: FaceEngine,
     threshold: float,
 ) -> RecognizeResponse:
-    image_bgr = _decode_image(data)
-    embedding = engine.detect_and_embed(image_bgr)
+    def _decode_and_embed() -> bytes | None:
+        return engine.detect_and_embed(_decode_image(data))
+
+    embedding = await run_in_threadpool(_decode_and_embed)
     if embedding is None:
         raise NoFaceDetectedError()
     return await recognize_face_vector(
@@ -176,7 +179,7 @@ async def add_face_from_image(
 ) -> FaceVectorMetadata:
     require_self_or_admin(current_user, user_id)
     image_bgr = _decode_image(await image.read())
-    embedding = engine.detect_and_embed(image_bgr)
+    embedding = await run_in_threadpool(engine.detect_and_embed, image_bgr)
     if embedding is None:
         raise NoFaceDetectedError()
     face = await add_face_vector(user_id, embedding, label, session)
