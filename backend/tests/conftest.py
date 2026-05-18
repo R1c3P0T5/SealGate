@@ -95,6 +95,8 @@ async def seeded_roles(database_session: AsyncSession) -> dict[str, Role]:
     await database_session.flush()
 
     permission_names = [
+        "user:create",
+        "user:delete",
         "door:open",
         "door:read",
         "door:lock",

@@ -3,7 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Path, Query, status
 
-from src.auth.dependencies import get_admin_user, get_current_user
+from src.auth.dependencies import get_admin_user, get_current_user, require_permission
 from src.auth.schemas import UserResponse
 from src.core.database import SessionDep
 from src.core.permissions import check_access
@@ -68,7 +68,7 @@ async def _full_user_response(user: User, session: SessionDep) -> UserResponseFu
 )
 async def list_users_endpoint(
     session: SessionDep,
-    current_user: Annotated[User, Depends(get_admin_user)],
+    current_user: Annotated[User, Depends(require_permission("user:create"))],
     skip: Annotated[
         int,
         Query(
@@ -149,7 +149,7 @@ async def delete_user_profile(
     session: SessionDep,
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> None:
-    await check_access(current_user, user_id, "users:write", session)
+    await check_access(current_user, user_id, "user:delete", session)
     await delete_user(user_id, session)
 
 
