@@ -5,13 +5,30 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from src.auth.schemas import UserResponse
 from src.core.exceptions import (
     EmailAlreadyInUseError,
     UserNotFoundError,
 )
 from src.core.utils import utc_now_naive
+from src.roles.models import Role
 from src.users.models import User
 from src.users.schemas import UserUpdateRequest
+
+
+async def build_user_response(user: User, session: AsyncSession) -> UserResponse:
+    role = await session.get(Role, user.role_id)  # type: ignore[attr-defined]
+    if role is None:
+        raise RuntimeError("User role seed data is missing.")
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        full_name=user.full_name,
+        role_name=role.name,
+        is_active=user.is_active,
+        created_at=user.created_at,
+    )
 
 
 async def get_user_by_id(user_id: UUID, session: AsyncSession) -> User:

@@ -25,6 +25,7 @@ from src.users.schemas import (
     UserUpdateRequest,
 )
 from src.users.service import (
+    build_user_response,
     delete_user,
     get_user_by_id,
     list_users,
@@ -40,18 +41,6 @@ async def _role_name(user: User, session: SessionDep) -> str:
     if role is None:
         raise RuntimeError("User role seed data is missing.")
     return role.name
-
-
-async def _user_response(user: User, session: SessionDep) -> UserResponse:
-    return UserResponse(
-        id=user.id,
-        username=user.username,
-        email=user.email,
-        full_name=user.full_name,
-        role_name=await _role_name(user, session),
-        is_active=user.is_active,
-        created_at=user.created_at,
-    )
 
 
 async def _full_user_response(user: User, session: SessionDep) -> UserResponseFull:
@@ -121,7 +110,7 @@ async def get_user(
 ) -> UserResponse:
     await require_self_or_permission(current_user, user_id, "users:read", session)
     user = await get_user_by_id(user_id, session)
-    return await _user_response(user, session)
+    return await build_user_response(user, session)
 
 
 @router.put(
@@ -142,7 +131,7 @@ async def update_user_profile(
 ) -> UserResponse:
     await require_self_or_permission(current_user, user_id, "users:write", session)
     user = await update_user(user_id, request, session)
-    return await _user_response(user, session)
+    return await build_user_response(user, session)
 
 
 @router.delete(
@@ -198,13 +187,5 @@ async def set_user_role_endpoint(
     current_user: Annotated[User, Depends(get_admin_user)],
 ) -> UserResponse:
     user = await get_user_by_id(user_id, session)
-    updated_user, role_name = await set_user_role(user, request.role_id, session)
-    return UserResponse(
-        id=updated_user.id,
-        username=updated_user.username,
-        email=updated_user.email,
-        full_name=updated_user.full_name,
-        role_name=role_name,
-        is_active=updated_user.is_active,
-        created_at=updated_user.created_at,
-    )
+    updated_user, _ = await set_user_role(user, request.role_id, session)
+    return await build_user_response(updated_user, session)
