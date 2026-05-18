@@ -318,6 +318,33 @@ async def test_from_image_register_with_face_stores_embedding(
 
 
 @pytest.mark.asyncio
+async def test_add_face_from_image_offloads_face_engine_to_threadpool(
+    client_with_face: AsyncClient,
+    database_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import src.faces.router as router
+
+    user, token = await _create_user_with_token(database_session)
+    threadpool_calls = []
+
+    async def fake_run_in_threadpool(func, *args, **kwargs):
+        threadpool_calls.append((func, args, kwargs))
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(router, "run_in_threadpool", fake_run_in_threadpool)
+
+    response = await client_with_face.post(
+        f"/api/users/{user.id}/faces/from-image",
+        files={"image": ("face.jpg", _make_jpeg_bytes(), "image/jpeg")},
+        headers=_auth_headers(token),
+    )
+
+    assert response.status_code == 201
+    assert threadpool_calls
+
+
+@pytest.mark.asyncio
 async def test_recognize_from_image_no_face_returns_400(
     client: AsyncClient,
 ) -> None:
@@ -361,6 +388,40 @@ async def test_recognize_from_image_matched(
     assert data["user_id"] == str(user.id)
     assert data["username"] == user.username
     assert data["confidence"] == pytest.approx(1.0, abs=1e-5)
+
+
+@pytest.mark.asyncio
+async def test_recognize_image_bytes_offloads_face_engine_to_threadpool(
+    database_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import src.faces.router as router
+
+    user, _ = await _create_user_with_token(database_session)
+    await add_face_vector(user.id, MOCK_EMBEDDING, "front", database_session)
+    engine = MagicMock()
+    engine.detect_and_embed.return_value = MOCK_EMBEDDING
+    threadpool_calls = []
+
+    async def fake_run_in_threadpool(func, *args, **kwargs):
+        threadpool_calls.append((func, args, kwargs))
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(
+        router,
+        "run_in_threadpool",
+        fake_run_in_threadpool,
+    )
+
+    response = await router._recognize_image_bytes(
+        _make_jpeg_bytes(),
+        database_session,
+        engine,
+        threshold=0.363,
+    )
+
+    assert response.matched is True
+    assert threadpool_calls
 
 
 @pytest.mark.asyncio
@@ -501,6 +562,34 @@ async def test_recognize_websocket_unexpected_error_keeps_connection(
     assert unsupported["error"] == "unsupported_message"
     assert "Face recognition WebSocket frame failed" in caplog.text
     assert "RuntimeError: model unavailable" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_recognize_websocket_offloads_face_engine_to_threadpool(
+    websocket_client_with_mock_engine: TestClient,
+    engine: AsyncEngine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import src.faces.router as router
+
+    await _create_websocket_user_with_face(engine)
+    threadpool_calls = []
+
+    async def fake_run_in_threadpool(func, *args, **kwargs):
+        threadpool_calls.append((func, args, kwargs))
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(router, "run_in_threadpool", fake_run_in_threadpool)
+
+    with websocket_client_with_mock_engine.websocket_connect(
+        WEBSOCKET_RECOGNIZE_PATH,
+        headers=DEVICE_AUTH_HEADERS,
+    ) as ws:
+        ws.send_bytes(_make_jpeg_bytes())
+        data = ws.receive_json()
+
+    assert data["type"] == "result"
+    assert threadpool_calls
 
 
 @pytest.mark.asyncio
