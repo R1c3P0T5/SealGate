@@ -126,8 +126,8 @@ onUnmounted(() => {
         </div>
       </Card>
 
-      <div class="grid gap-4">
-        <Card title="Last Result">
+      <div class="grid content-start gap-4">
+        <Card title="Last Result" fit>
           <div v-if="lastResult" class="grid gap-3">
             <div class="flex items-center gap-3">
               <Avatar
@@ -151,7 +151,7 @@ onUnmounted(() => {
           <Placeholder v-else label="Waiting for face…" :height="160" />
         </Card>
 
-        <Card title="Door Control">
+        <Card title="Door Control" fit>
           <div class="grid gap-3">
             <Select
               v-if="doorOptions.length > 1"

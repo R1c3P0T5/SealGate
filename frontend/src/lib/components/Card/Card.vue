@@ -4,15 +4,16 @@ defineOptions({ name: 'UiCard' })
 defineProps<{
   kicker?: string
   title?: string
+  fit?: boolean
 }>()
 </script>
 
 <template>
-  <div class="min-w-0 rounded-[2px] border border-border bg-subtle">
+  <div class="min-w-0 rounded-[2px] border border-border bg-subtle" :class="{ 'self-start': fit }">
     <div
       v-if="kicker || title || $slots.action"
       data-card-header
-      class="flex items-center justify-between gap-2.5 border-b border-border-soft px-3.5 py-3"
+      class="flex items-center justify-between gap-2.5 border-b border-border-soft px-3.5 py-2"
     >
       <div v-if="kicker || title" class="min-w-0">
         <p
