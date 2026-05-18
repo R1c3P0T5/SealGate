@@ -7,6 +7,16 @@ from src.auth.dependencies import get_admin_user, get_current_user
 from src.auth.schemas import UserResponse
 from src.core.database import SessionDep
 from src.core.permissions import require_self_or_permission
+from src.permissions.schemas import (
+    SetUserPermissionsRequest,
+    SetUserRoleRequest,
+    UserPermissionsResponse,
+)
+from src.permissions.service import (
+    get_user_permissions_detail,
+    set_user_permission_overrides,
+    set_user_role,
+)
 from src.roles.models import Role
 from src.users.models import User
 from src.users.schemas import (
@@ -152,3 +162,49 @@ async def delete_user_profile(
 ) -> None:
     await require_self_or_permission(current_user, user_id, "users:write", session)
     await delete_user(user_id, session)
+
+
+@router.get("/{user_id}/permissions", response_model=UserPermissionsResponse)
+async def get_user_permissions_endpoint(
+    user_id: Annotated[UUID, Path()],
+    session: SessionDep,
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> UserPermissionsResponse:
+    await require_self_or_permission(current_user, user_id, "users:read", session)
+    user = await get_user_by_id(user_id, session)
+    detail = await get_user_permissions_detail(user, session)
+    return UserPermissionsResponse(**detail)
+
+
+@router.put("/{user_id}/permissions", response_model=UserPermissionsResponse)
+async def set_user_permissions_endpoint(
+    user_id: Annotated[UUID, Path()],
+    request: SetUserPermissionsRequest,
+    session: SessionDep,
+    current_user: Annotated[User, Depends(get_admin_user)],
+) -> UserPermissionsResponse:
+    user = await get_user_by_id(user_id, session)
+    overrides = [o.model_dump() for o in request.overrides]
+    await set_user_permission_overrides(user, overrides, session)
+    detail = await get_user_permissions_detail(user, session)
+    return UserPermissionsResponse(**detail)
+
+
+@router.put("/{user_id}/role", response_model=UserResponse)
+async def set_user_role_endpoint(
+    user_id: Annotated[UUID, Path()],
+    request: SetUserRoleRequest,
+    session: SessionDep,
+    current_user: Annotated[User, Depends(get_admin_user)],
+) -> UserResponse:
+    user = await get_user_by_id(user_id, session)
+    updated_user, role_name = await set_user_role(user, request.role_id, session)
+    return UserResponse(
+        id=updated_user.id,
+        username=updated_user.username,
+        email=updated_user.email,
+        full_name=updated_user.full_name,
+        role_name=role_name,
+        is_active=updated_user.is_active,
+        created_at=updated_user.created_at,
+    )
