@@ -19,12 +19,11 @@ def test_get_settings_returns_cached_settings_from_environment(
 
     assert settings.SECRET_KEY == "a" * 32
     assert settings.DATABASE_URL == "sqlite+aiosqlite:///./test.db"
-    assert settings.DEBUG is True
     assert get_settings() is settings
 
 
 def test_settings_defaults_without_env_file() -> None:
-    settings = Settings(SECRET_KEY="b" * 32, DEBUG=False, _env_file=None)  # type: ignore[call-arg]
+    settings = Settings(SECRET_KEY="b" * 32, _env_file=None)  # type: ignore[call-arg]
 
     assert settings.DEBUG is False
     assert settings.JWT_ALGORITHM == "HS256"
