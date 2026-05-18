@@ -3,6 +3,8 @@ name: commit-message
 on:
   pull_request:
   push:
+    branches:
+      - main
 
 jobs:
   lint-commits:
