@@ -19,7 +19,7 @@ async def full_setup(database_session: AsyncSession) -> dict:
 
     perms = [
         Permission(name=n)
-        for n in ("door:open", "door:read", "face:create", "users:read")
+        for n in ("door:open", "door:read", "face:create", "user:read", "user:manage")
     ]
     for p in perms:
         database_session.add(p)
@@ -67,7 +67,7 @@ async def test_list_permissions_returns_all(
         "/api/permissions", headers={"Authorization": f"Bearer {token}"}
     )
     assert response.status_code == 200
-    assert len(response.json()["permissions"]) == 4
+    assert len(response.json()["permissions"]) == 5
 
 
 @pytest.mark.asyncio
