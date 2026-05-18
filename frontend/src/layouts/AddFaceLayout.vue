@@ -13,7 +13,6 @@ defineOptions({ name: 'AddFaceLayout' })
           <Button variant="ghost" size="xs">Back</Button>
         </RouterLink>
         <h1 class="font-mono text-sm uppercase tracking-[0.08em] text-text-hi">Add Face</h1>
-        <p class="text-sm text-text-lo">Capture or upload an image to register a face vector.</p>
       </div>
       <slot />
     </div>
