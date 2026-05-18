@@ -12,6 +12,7 @@ from src.auth.service import ensure_default_admin
 from src.core.config import get_settings
 from src.doors.router import router as doors_router
 from src.faces.router import router as faces_router
+from src.permissions.router import router as permissions_router
 from src.roles.router import router as roles_router
 from src.users.router import router as users_router
 import src.roles.models as _roles_models  # noqa: F401
@@ -65,6 +66,7 @@ def create_app() -> FastAPI:
     app.include_router(faces_router)
     app.include_router(doors_router)
     app.include_router(roles_router)
+    app.include_router(permissions_router)
 
     @app.get("/health")
     async def health_check() -> dict[str, str]:
