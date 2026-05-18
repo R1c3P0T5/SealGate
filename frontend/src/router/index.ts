@@ -62,7 +62,7 @@ router.beforeEach((to) => {
 
   if (!auth.isAuthenticated && !isPublic) return { name: 'login' }
   if (auth.isAuthenticated && isPublic) return { name: 'dashboard' }
-  if (to.meta.adminOnly && auth.user?.role !== 'admin') return { name: 'dashboard' }
+  if (to.meta.adminOnly && auth.user?.role_name !== 'admin') return { name: 'dashboard' }
 })
 
 export default router
