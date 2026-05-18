@@ -33,11 +33,11 @@ const deleteDialogOpen = ref(false)
 const deleteTarget = ref<FaceVectorMetadata | null>(null)
 const deleting = ref(false)
 
-const isAdmin = computed(() => auth.user?.role === 'admin')
+const isAdmin = computed(() => auth.user?.role_name === 'admin')
 const userOptions = computed<SelectOption[]>(() =>
   users.value.map((user) => ({
     value: user.id,
-    label: `${user.username} (${user.role})`,
+    label: `${user.username} (${user.role_name})`,
   })),
 )
 

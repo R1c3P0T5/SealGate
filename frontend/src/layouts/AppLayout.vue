@@ -15,7 +15,7 @@ const sidebarOpen = ref(false)
 
 const navItems = computed<NavItemDef[]>(() => {
   const items: NavItemDef[] = [{ key: 'dashboard', label: 'Dashboard', href: '/' }]
-  if (auth.user?.role === 'admin') {
+  if (auth.user?.role_name === 'admin') {
     items.push({ key: 'recognize', label: 'Live Recognition', href: '/recognize' })
   }
   items.push(
