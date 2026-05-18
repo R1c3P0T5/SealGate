@@ -69,6 +69,8 @@ async def seed_roles_and_permissions() -> None:
         ("face:delete", "Delete face vectors"),
         ("users:read", "Read user profiles"),
         ("users:write", "Create, update, and delete users"),
+        ("user:create", "Create user accounts"),
+        ("user:delete", "Delete user accounts"),
         ("door:create", "Create doors"),
         ("door:open", "Trigger door open"),
         ("door:read", "Read door information"),
