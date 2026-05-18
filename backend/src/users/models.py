@@ -1,15 +1,9 @@
 from datetime import datetime
-from enum import Enum
 from uuid import UUID, uuid4
 
 from sqlmodel import Field, SQLModel
 
 from src.core.utils import utc_now_naive
-
-
-class UserRole(str, Enum):
-    USER = "user"
-    ADMIN = "admin"
 
 
 class User(SQLModel, table=True):
@@ -20,7 +14,7 @@ class User(SQLModel, table=True):
     email: str | None = Field(default=None, unique=True, index=True)
     password_hash: str = Field(nullable=False)
     full_name: str = Field(nullable=False)
-    role: UserRole = Field(default=UserRole.USER, nullable=False)
+    role_id: UUID = Field(foreign_key="role.id", index=True, nullable=False)
     is_active: bool = Field(default=True, nullable=False)
     created_at: datetime = Field(default_factory=utc_now_naive, nullable=False)
     updated_at: datetime = Field(default_factory=utc_now_naive, nullable=False)

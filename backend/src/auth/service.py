@@ -16,7 +16,8 @@ from src.core.exceptions import (
     InvalidCredentialsError,
     UsernameAlreadyExistsError,
 )
-from src.users.models import User, UserRole
+from src.roles.models import Role
+from src.users.models import User
 
 
 async def ensure_default_admin(
@@ -43,12 +44,18 @@ async def ensure_default_admin(
         settings.DEFAULT_ADMIN_USERNAME,
         settings.DEFAULT_ADMIN_EMAIL,
     )
+    admin_role = (
+        await session.exec(select(Role).where(Role.name == "admin"))
+    ).one_or_none()
+    if admin_role is None:
+        raise RuntimeError("Admin role seed data is missing.")
+
     admin = User(
         username=settings.DEFAULT_ADMIN_USERNAME,
         email=settings.DEFAULT_ADMIN_EMAIL,
         password_hash=hash_password(settings.DEFAULT_ADMIN_PASSWORD),
         full_name=settings.DEFAULT_ADMIN_FULL_NAME or settings.DEFAULT_ADMIN_USERNAME,
-        role=UserRole.ADMIN,
+        role_id=admin_role.id,
         is_active=True,
     )
     session.add(admin)
@@ -63,12 +70,15 @@ async def register_user(
     """Register a new active user."""
 
     validate_password_strength(request.password, request.username, request.email)
+    stmt = select(Role).where(Role.name == "user")
+    user_role = (await session.exec(stmt)).one()
+
     user = User(
         username=request.username,
         email=request.email,
         password_hash=hash_password(request.password),
         full_name=request.full_name,
-        role=UserRole.USER,
+        role_id=user_role.id,
         is_active=True,
     )
 

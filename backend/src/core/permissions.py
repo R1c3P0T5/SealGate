@@ -10,11 +10,10 @@ from src.users.models import User
 
 async def get_user_permissions(user: User, session: AsyncSession) -> set[str]:
     """Return effective permission set for a user (role defaults + per-user overrides)."""
-    role_id = user.role_id  # type: ignore[attr-defined]  # added in Task 5 migration
     role_stmt = select(Permission.name).where(
         Permission.id.in_(  # type: ignore[attr-defined]
             select(RolePermission.permission_id).where(
-                RolePermission.role_id == role_id
+                RolePermission.role_id == user.role_id
             )
         )
     )

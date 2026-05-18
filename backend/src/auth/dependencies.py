@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from typing import Annotated
 from uuid import UUID
 
@@ -11,7 +12,8 @@ from src.core.exceptions import (
     InvalidTokenError,
     PermissionDeniedError,
 )
-from src.users.models import User, UserRole
+from src.roles.models import Role
+from src.users.models import User
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
@@ -49,10 +51,29 @@ async def get_current_user(
 
 async def get_admin_user(
     current_user: Annotated[User, Depends(get_current_user)],
+    session: SessionDep,
 ) -> User:
     """Verify current user has the admin role."""
 
-    if current_user.role != UserRole.ADMIN:
+    role = await session.get(Role, current_user.role_id)
+    if role is None or role.name != "admin":
         raise PermissionDeniedError()
 
     return current_user
+
+
+def require_permission(permission: str) -> Callable[..., object]:
+    """Create a dependency that requires the named effective permission."""
+
+    async def dependency(
+        current_user: Annotated[User, Depends(get_current_user)],
+        session: SessionDep,
+    ) -> User:
+        from src.core.permissions import get_user_permissions
+
+        permissions = await get_user_permissions(current_user, session)
+        if permission not in permissions:
+            raise PermissionDeniedError()
+        return current_user
+
+    return dependency

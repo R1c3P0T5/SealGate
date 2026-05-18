@@ -13,7 +13,8 @@ from src.core.exceptions import (
     InvalidTokenError,
     PermissionDeniedError,
 )
-from src.users.models import User, UserRole
+from src.roles.models import Role
+from src.users.models import User
 
 
 @pytest_asyncio.fixture
@@ -41,6 +42,7 @@ def test_oauth2_scheme_uses_auth_login_token_url() -> None:
 @pytest.mark.asyncio
 async def test_get_current_user_returns_active_user_from_valid_token(
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     from src.auth.dependencies import get_current_user
 
@@ -48,6 +50,7 @@ async def test_get_current_user_returns_active_user_from_valid_token(
         username=f"user_{uuid4().hex}",
         password_hash="hash",
         full_name="John Doe",
+        role_id=seeded_roles["user"].id,
     )
     database_session.add(user)
     await database_session.commit()
@@ -74,6 +77,7 @@ async def test_get_current_user_rejects_invalid_token(
 @pytest.mark.asyncio
 async def test_get_current_user_rejects_inactive_user(
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     from src.auth.dependencies import get_current_user
 
@@ -81,6 +85,7 @@ async def test_get_current_user_rejects_inactive_user(
         username=f"inactive_{uuid4().hex}",
         password_hash="hash",
         full_name="Inactive User",
+        role_id=seeded_roles["user"].id,
         is_active=False,
     )
     database_session.add(user)
@@ -94,23 +99,26 @@ async def test_get_current_user_rejects_inactive_user(
 
 
 @pytest.mark.asyncio
-async def test_get_admin_user_requires_admin_role() -> None:
+async def test_get_admin_user_requires_admin_role(
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
     from src.auth.dependencies import get_admin_user
 
     admin = User(
         username="admin",
         password_hash="hash",
         full_name="Admin User",
-        role=UserRole.ADMIN,
+        role_id=seeded_roles["admin"].id,
     )
     user = User(
         username="regular",
         password_hash="hash",
         full_name="Regular User",
-        role=UserRole.USER,
+        role_id=seeded_roles["user"].id,
     )
 
-    assert await get_admin_user(admin) is admin
+    assert await get_admin_user(admin, database_session) is admin
 
     with pytest.raises(PermissionDeniedError):
-        await get_admin_user(user)
+        await get_admin_user(user, database_session)

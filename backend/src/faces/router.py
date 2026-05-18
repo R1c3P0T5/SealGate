@@ -20,7 +20,6 @@ from starlette.concurrency import run_in_threadpool
 from starlette.websockets import WebSocketDisconnect
 
 from src.auth.dependencies import get_current_user
-from src.core.access import require_self_or_admin
 from src.core.config import get_settings
 from src.core.database import SessionDep, session_context
 from src.core.exceptions import (
@@ -28,6 +27,7 @@ from src.core.exceptions import (
     NoFaceDetectedError,
 )
 from src.faces.engine import EngineDep, FaceEngine
+from src.core.permissions import require_self_or_permission
 from src.faces.models import FaceVector
 from src.faces.schemas import (
     FaceVectorListResponse,
@@ -134,7 +134,7 @@ async def list_user_face_vectors(
         ),
     ] = MAX_FACE_VECTORS_PER_USER,
 ) -> FaceVectorListResponse:
-    require_self_or_admin(current_user, user_id)
+    await require_self_or_permission(current_user, user_id, "face:read", session)
     total, faces = await list_face_vectors(user_id, session, skip=skip, limit=limit)
     return FaceVectorListResponse(
         total=total,
@@ -155,7 +155,7 @@ async def delete_user_face_vector(
     session: SessionDep,
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> None:
-    require_self_or_admin(current_user, user_id)
+    await require_self_or_permission(current_user, user_id, "face:delete", session)
     await delete_face_vector(face_id, user_id, session)
 
 
@@ -177,7 +177,7 @@ async def add_face_from_image(
     current_user: Annotated[User, Depends(get_current_user)],
     label: Annotated[str | None, Form(min_length=1, max_length=64)] = None,
 ) -> FaceVectorMetadata:
-    require_self_or_admin(current_user, user_id)
+    await require_self_or_permission(current_user, user_id, "face:create", session)
     image_bgr = _decode_image(await image.read())
     embedding = await run_in_threadpool(engine.detect_and_embed, image_bgr)
     if embedding is None:

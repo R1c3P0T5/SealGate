@@ -3,8 +3,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from src.users.models import UserRole
-
 
 class UserRegisterRequest(BaseModel):
     """User registration request."""
@@ -61,7 +59,7 @@ class UserResponse(BaseModel):
     username: str = Field(description="Unique login name.")
     email: str | None = Field(default=None, description="Optional email address.")
     full_name: str = Field(description="Human-readable display name.")
-    role: UserRole = Field(description="Authorization role assigned to the user.")
+    role_name: str = Field(description="Role name assigned to the user.")
     is_active: bool = Field(description="Whether the account can authenticate.")
     created_at: datetime = Field(description="UTC timestamp when the user was created.")
 

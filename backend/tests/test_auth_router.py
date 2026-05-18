@@ -5,6 +5,7 @@ from fastapi.routing import APIRoute
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.auth.schemas import LoginResponse, UserRegisterRequest
+from src.roles.models import Role
 from src.users.models import User
 
 
@@ -27,6 +28,7 @@ def test_auth_router_exposes_expected_routes() -> None:
 @pytest.mark.asyncio
 async def test_register_endpoint_returns_safe_user_response(
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     from src.auth.router import register
 
@@ -41,14 +43,14 @@ async def test_register_endpoint_returns_safe_user_response(
         database_session,
     )
 
-    assert isinstance(response, User)
     assert response.username == username
-    assert response.password_hash != "MySecurePass123"
+    assert response.role_name == "user"
 
 
 @pytest.mark.asyncio
 async def test_login_endpoint_returns_login_response(
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     from src.auth.router import login, register
     from src.auth.schemas import UserLoginRequest
@@ -75,16 +77,20 @@ async def test_login_endpoint_returns_login_response(
 
 
 @pytest.mark.asyncio
-async def test_me_endpoint_returns_current_user() -> None:
+async def test_me_endpoint_returns_current_user(
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
     from src.auth.router import get_current_user_info
 
     user = User(
         username="current_user",
         password_hash="hash",
         full_name="Current User",
+        role_id=seeded_roles["user"].id,
     )
 
-    response = await get_current_user_info(user)
+    response = await get_current_user_info(user, database_session)
 
-    assert response is user
     assert response.username == "current_user"
+    assert response.role_name == "user"

@@ -9,6 +9,7 @@ import pytest_asyncio
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from starlette.websockets import WebSocketDisconnect
 
@@ -18,7 +19,8 @@ from src.core.config import get_settings
 from src.core.database import get_session
 from src.faces.engine import get_engine
 from src.faces.service import add_face_vector
-from src.users.models import User, UserRole
+from src.roles.models import Role
+from src.users.models import User
 
 MOCK_EMBEDDING = np.random.default_rng(42).random(128, dtype=np.float32).tobytes()
 TEST_DEVICE_TOKEN = "test-jetson-device-token"
@@ -35,14 +37,15 @@ def _make_jpeg_bytes() -> bytes:
 async def _create_user_with_token(
     session: AsyncSession,
     *,
-    role: UserRole = UserRole.USER,
+    role_name: str = "user",
 ) -> tuple[User, str]:
+    role = (await session.exec(select(Role).where(Role.name == role_name))).one()
     user = User(
         username=f"user_{uuid4().hex[:12]}",
         email=f"{uuid4().hex[:12]}@example.com",
         password_hash=hash_password("Pass123!"),
         full_name="Face Router User",
-        role=role,
+        role_id=role.id,
         is_active=True,
     )
     session.add(user)
@@ -161,6 +164,7 @@ async def websocket_client_with_mock_engine(
 async def test_list_faces_empty_returns_total_and_faces(
     client: AsyncClient,
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     user, token = await _create_user_with_token(database_session)
 
@@ -181,6 +185,7 @@ async def test_list_faces_empty_returns_total_and_faces(
 async def test_list_faces_requires_authentication(
     client: AsyncClient,
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     user, _ = await _create_user_with_token(database_session)
 
@@ -193,6 +198,7 @@ async def test_list_faces_requires_authentication(
 async def test_list_faces_forbids_other_user(
     client: AsyncClient,
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     user, _ = await _create_user_with_token(database_session)
     other_user, other_token = await _create_user_with_token(database_session)
@@ -210,11 +216,12 @@ async def test_list_faces_forbids_other_user(
 async def test_admin_can_list_faces_for_any_user(
     client: AsyncClient,
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     user, _ = await _create_user_with_token(database_session)
     _, admin_token = await _create_user_with_token(
         database_session,
-        role=UserRole.ADMIN,
+        role_name="admin",
     )
 
     response = await client.get(
@@ -234,6 +241,7 @@ async def test_admin_can_list_faces_for_any_user(
 async def test_delete_face_returns_no_content_after_adding(
     client: AsyncClient,
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     user, token = await _create_user_with_token(database_session)
     face = await add_face_vector(user.id, MOCK_EMBEDDING, "front", database_session)
@@ -251,6 +259,7 @@ async def test_delete_face_returns_no_content_after_adding(
 async def test_delete_nonexistent_face_returns_not_found(
     client: AsyncClient,
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     user, token = await _create_user_with_token(database_session)
 
@@ -267,6 +276,7 @@ async def test_delete_nonexistent_face_returns_not_found(
 async def test_from_image_register_no_face_returns_400(
     client: AsyncClient,
     database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
 ) -> None:
     user, token = await _create_user_with_token(database_session)
 
