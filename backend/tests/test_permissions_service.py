@@ -47,11 +47,11 @@ async def roles_and_perms(database_session: AsyncSession) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_get_user_permissions_returns_role_defaults(
+async def test_user_permissions_returns_role_defaults(
     database_session: AsyncSession,
     roles_and_perms: dict,
 ) -> None:
-    from src.core.permissions import get_user_permissions
+    from src.core.permissions import user_permissions
 
     user = User(
         username=f"u_{uuid4().hex[:8]}",
@@ -62,7 +62,7 @@ async def test_get_user_permissions_returns_role_defaults(
     database_session.add(user)
     await database_session.commit()
 
-    perms = await get_user_permissions(user, database_session)
+    perms = await user_permissions(user, database_session)
 
     assert "door:open" in perms
     assert "door:read" in perms
@@ -74,7 +74,7 @@ async def test_override_granted_adds_permission_not_in_role(
     database_session: AsyncSession,
     roles_and_perms: dict,
 ) -> None:
-    from src.core.permissions import get_user_permissions
+    from src.core.permissions import user_permissions
 
     user = User(
         username=f"u_{uuid4().hex[:8]}",
@@ -94,7 +94,7 @@ async def test_override_granted_adds_permission_not_in_role(
     )
     await database_session.commit()
 
-    perms = await get_user_permissions(user, database_session)
+    perms = await user_permissions(user, database_session)
     assert "face:create" in perms
 
 
@@ -103,7 +103,7 @@ async def test_override_revoked_removes_permission_from_role(
     database_session: AsyncSession,
     roles_and_perms: dict,
 ) -> None:
-    from src.core.permissions import get_user_permissions
+    from src.core.permissions import user_permissions
 
     user = User(
         username=f"u_{uuid4().hex[:8]}",
@@ -123,6 +123,6 @@ async def test_override_revoked_removes_permission_from_role(
     )
     await database_session.commit()
 
-    perms = await get_user_permissions(user, database_session)
+    perms = await user_permissions(user, database_session)
     assert "door:open" not in perms
     assert "door:read" in perms

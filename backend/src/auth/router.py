@@ -14,7 +14,7 @@ from src.auth.schemas import (
 from src.auth.service import authenticate_user, register_user
 from src.core.database import SessionDep
 from src.users.models import User
-from src.users.service import build_user_response
+from src.users.service import user_response
 
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -37,7 +37,7 @@ async def register(
     session: SessionDep,
 ) -> UserResponse:
     user = await register_user(request, session)
-    return await build_user_response(user, session)
+    return await user_response(user, session)
 
 
 @router.post(
@@ -58,7 +58,7 @@ async def login(
     return LoginResponse(
         access_token=token,
         token_type="bearer",
-        user=await build_user_response(user, session),
+        user=await user_response(user, session),
     )
 
 
@@ -97,4 +97,4 @@ async def get_current_user_info(
     current_user: Annotated[User, Depends(get_current_user)],
     session: SessionDep,
 ) -> UserResponse:
-    return await build_user_response(current_user, session)
+    return await user_response(current_user, session)

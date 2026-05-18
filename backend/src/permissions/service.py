@@ -8,11 +8,11 @@ from src.roles.models import Role
 from src.users.models import User
 
 
-async def list_all_permissions(session: AsyncSession) -> list[Permission]:
+async def all_permissions(session: AsyncSession) -> list[Permission]:
     return list((await session.exec(select(Permission))).all())
 
 
-async def get_user_permissions_detail(user: User, session: AsyncSession) -> dict:
+async def permissions_detail(user: User, session: AsyncSession) -> dict:
     # WHERE + subquery to avoid join onclause pyright bool-inference issue
     role_stmt = select(Permission.name).where(
         Permission.id.in_(  # type: ignore[attr-defined]
@@ -46,7 +46,7 @@ async def get_user_permissions_detail(user: User, session: AsyncSession) -> dict
     }
 
 
-async def set_user_permission_overrides(
+async def set_overrides(
     user: User,
     overrides: list[dict],
     session: AsyncSession,

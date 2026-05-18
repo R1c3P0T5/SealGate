@@ -8,7 +8,7 @@ from src.permissions.models import Permission, RolePermission, UserPermissionOve
 from src.users.models import User
 
 
-async def get_user_permissions(user: User, session: AsyncSession) -> set[str]:
+async def user_permissions(user: User, session: AsyncSession) -> set[str]:
     """Return effective permission set for a user (role defaults + per-user overrides)."""
     role_stmt = select(Permission.name).where(
         Permission.id.in_(  # type: ignore[attr-defined]
@@ -32,12 +32,12 @@ async def get_user_permissions(user: User, session: AsyncSession) -> set[str]:
     return result
 
 
-async def require_self_or_permission(
+async def check_access(
     current_user: User, user_id: UUID, permission: str, session: AsyncSession
 ) -> None:
     """Allow if current_user is the target user, else require named permission."""
     if current_user.id == user_id:
         return
-    perms = await get_user_permissions(current_user, session)
+    perms = await user_permissions(current_user, session)
     if permission not in perms:
         raise PermissionDeniedError()

@@ -16,7 +16,7 @@ from src.users.models import User
 from src.users.schemas import UserUpdateRequest
 
 
-async def build_user_response(user: User, session: AsyncSession) -> UserResponse:
+async def user_response(user: User, session: AsyncSession) -> UserResponse:
     role = await session.get(Role, user.role_id)  # type: ignore[attr-defined]
     if role is None:
         raise RuntimeError("User role seed data is missing.")
