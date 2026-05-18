@@ -143,10 +143,10 @@ onMounted(async () => {
         :options="userOptions"
         :disabled="loadingUsers || loading"
         placeholder="Manage user"
-        class="min-w-52 flex-1 md:flex-none"
+        class="w-full md:w-auto md:min-w-52"
         @update:model-value="changeUser"
       />
-      <RouterLink to="/faces/new" class="ml-auto">
+      <RouterLink to="/faces/new" class="col-start-2 md:col-start-auto">
         <Button variant="primary">Add Face</Button>
       </RouterLink>
     </template>
