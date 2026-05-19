@@ -12,7 +12,6 @@ class FaceVectorMetadata(BaseModel):
     """Face vector metadata — does not expose raw embedding bytes."""
 
     id: UUID = Field(description="Stable face vector identifier.")
-    label: str | None = Field(default=None, description="Optional face vector label.")
     embedding_size: int = Field(description="Stored embedding size in bytes.")
     created_at: datetime = Field(
         description="UTC timestamp when the vector was created."

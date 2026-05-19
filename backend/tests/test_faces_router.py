@@ -158,7 +158,7 @@ async def test_delete_face_returns_no_content_after_adding(
     seeded_roles: dict[str, Role],
 ) -> None:
     user, token = await _create_user_with_token(database_session)
-    face = await add_face_vector(user.id, MOCK_EMBEDDING, "front", database_session)
+    face = await add_face_vector(user.id, MOCK_EMBEDDING, database_session)
 
     response = await client.delete(
         f"/api/users/{user.id}/faces/{face.id}",
@@ -303,7 +303,7 @@ async def test_recognize_from_image_matched(
     seeded_roles: dict[str, Role],
 ) -> None:
     user, _ = await _create_user_with_token(database_session)
-    await add_face_vector(user.id, MOCK_EMBEDDING, "front", database_session)
+    await add_face_vector(user.id, MOCK_EMBEDDING, database_session)
 
     response = await client_with_face.post(
         "/api/faces/recognize/from-image",
@@ -327,7 +327,7 @@ async def test_recognize_image_bytes_offloads_face_engine_to_threadpool(
     import src.faces.router as router
 
     user, _ = await _create_user_with_token(database_session)
-    await add_face_vector(user.id, MOCK_EMBEDDING, "front", database_session)
+    await add_face_vector(user.id, MOCK_EMBEDDING, database_session)
     engine = MagicMock()
     engine.detect_and_embed.return_value = MOCK_EMBEDDING
     threadpool_calls = []
