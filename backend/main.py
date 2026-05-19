@@ -1,6 +1,5 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,17 +17,10 @@ from src.users.router import router as users_router
 import src.roles.models as _roles_models  # noqa: F401
 import src.permissions.models as _permissions_models  # noqa: F401
 
-logger = logging.getLogger(__name__)
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
-    if settings.JETSON_CAMERA_TOKEN is None:
-        logger.warning(
-            "JETSON_CAMERA_TOKEN is not configured; recognition WebSocket "
-            "connections will be rejected."
-        )
     await db.init_db()
     await db.create_db_and_tables()
     await db.seed_roles_and_permissions()

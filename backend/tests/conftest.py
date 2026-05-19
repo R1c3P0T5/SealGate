@@ -32,7 +32,6 @@ def isolate_test_settings(
 ) -> Generator[None, None, None]:
     test_database_url = f"sqlite+aiosqlite:///{tmp_path}/test_jetson_facelock.db"
     monkeypatch.setenv("DATABASE_URL", test_database_url)
-    monkeypatch.setenv("JETSON_CAMERA_TOKEN", "test-jetson-device-token")
     get_settings.cache_clear()
     try:
         yield

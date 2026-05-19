@@ -71,10 +71,6 @@ See [`.env.example`](./.env.example) for all variables and
 Setting `DEFAULT_ADMIN_USERNAME` and `DEFAULT_ADMIN_PASSWORD` together seeds an
 admin user at startup; existing users are not overwritten.
 
-Set `JETSON_CAMERA_TOKEN` to enable the face-recognition WebSocket used by the
-Jetson camera. Connect with `Authorization: Bearer <token>` during the WebSocket
-handshake.
-
 ## Project Structure
 
 ```text
