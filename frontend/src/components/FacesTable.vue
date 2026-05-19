@@ -22,7 +22,6 @@ const emit = defineEmits<{
 
 const columns: TableColumn[] = [
   { key: 'id', label: 'ID' },
-  { key: 'label', label: 'Label' },
   { key: 'size', label: 'Size' },
   { key: 'created', label: 'Created' },
   { key: 'actions', label: 'Actions' },
@@ -31,7 +30,6 @@ const columns: TableColumn[] = [
 const rows = computed<Record<string, unknown>[]>(() =>
   props.faces.map((face) => ({
     id: face.id.slice(0, 8),
-    label: face.label ?? '—',
     size: `${face.embedding_size} B`,
     created: new Date(face.created_at).toLocaleString(),
     faceId: face.id,

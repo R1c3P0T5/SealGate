@@ -6,7 +6,6 @@ import numpy as np
 from fastapi import (
     APIRouter,
     Depends,
-    Form,
     Path,
     Query,
     UploadFile,
@@ -46,7 +45,6 @@ router = APIRouter(tags=["faces"])
 def _to_metadata(face: FaceVector) -> FaceVectorMetadata:
     return FaceVectorMetadata(
         id=face.id,
-        label=face.label,
         embedding_size=len(face.embedding),
         created_at=face.created_at,
     )
@@ -144,14 +142,13 @@ async def add_face_from_image(
     session: SessionDep,
     engine: EngineDep,
     current_user: Annotated[User, Depends(get_current_user)],
-    label: Annotated[str | None, Form(min_length=1, max_length=64)] = None,
 ) -> FaceVectorMetadata:
     await check_access(current_user, user_id, "face:create", session)
     image_bgr = _decode_image(await image.read())
     embedding = await run_in_threadpool(engine.detect_and_embed, image_bgr)
     if embedding is None:
         raise NoFaceDetectedError()
-    face = await add_face_vector(user_id, embedding, label, session)
+    face = await add_face_vector(user_id, embedding, session)
     return _to_metadata(face)
 
 

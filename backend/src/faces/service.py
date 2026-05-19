@@ -43,7 +43,6 @@ async def list_face_vectors(
 async def add_face_vector(
     user_id: UUID,
     embedding: bytes,
-    label: str | None,
     session: AsyncSession,
 ) -> FaceVector:
     count = (
@@ -55,7 +54,7 @@ async def add_face_vector(
     ).one()
     if count >= MAX_FACE_VECTORS_PER_USER:
         raise FaceVectorLimitExceededError()
-    fv = FaceVector(user_id=user_id, embedding=embedding, label=label)
+    fv = FaceVector(user_id=user_id, embedding=embedding)
     session.add(fv)
     await session.commit()
     await session.refresh(fv)
