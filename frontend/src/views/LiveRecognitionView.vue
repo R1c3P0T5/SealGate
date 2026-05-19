@@ -11,8 +11,8 @@ defineOptions({ name: 'LiveRecognitionView' })
 
 // TODO: Wire to backend pub/sub once available.
 // Backend needs:
-//   1. door camera uploads frames (existing WS /ws/faces/recognize is client→server only)
-//   2. push recognition events (and ideally frames) to subscribed admin viewers
+//   1. /ws/camera/preview for the admin live view
+//   2. /ws/events/access for recognition and door events
 //   3. POST /api/doors/{id}/unlock endpoint
 
 const MOCK_RESULTS: RecognizeResponse[] = [
