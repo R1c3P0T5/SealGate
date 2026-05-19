@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import src.core.database as db
 import src.faces.engine as face_engine
+from src.access_logs.router import router as access_logs_router
 from src.auth.router import router as auth_router
 from src.auth.service import ensure_default_admin
 from src.core.config import get_settings
@@ -57,6 +58,7 @@ def create_app() -> FastAPI:
     app.include_router(users_router)
     app.include_router(faces_router)
     app.include_router(doors_router)
+    app.include_router(access_logs_router)
     app.include_router(roles_router)
     app.include_router(permissions_router)
 
