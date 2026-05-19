@@ -12,6 +12,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from main import app
 from src.auth.utils import hash_password
+from src.access_logs.models import AccessLog as _AccessLog  # noqa: F401
 from src.core.config import get_settings
 from src.core.database import get_session
 from src.faces.models import FaceVector as _FaceVector  # noqa: F401
