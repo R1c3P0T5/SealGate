@@ -68,6 +68,7 @@ def test_openapi_docs_include_operation_and_schema_descriptions() -> None:
         ("/api/users/{user_id}", "put"): "Update user profile",
         ("/api/users/{user_id}", "delete"): "Delete user",
         ("/api/access-logs", "get"): "List access logs",
+        ("/api/doors/{door_id}/unlock", "post"): "Unlock door",
     }
 
     for (path, method), summary in expected_summaries.items():

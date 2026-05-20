@@ -49,6 +49,19 @@ class DoorResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class DoorUnlockResponse(BaseModel):
+    door_id: UUID = Field(description="Door that received the unlock command.")
+    user_id: UUID = Field(description="User who requested the unlock.")
+    username: str = Field(description="Username snapshot for the unlock request.")
+    confidence: float | None = Field(
+        default=None, description="Recognition confidence, if applicable."
+    )
+    door_opened: bool = Field(description="Whether the backend sent an open command.")
+    access_log_id: UUID | None = Field(
+        default=None, description="Access log entry written for this unlock."
+    )
+
+
 class DoorListResponse(BaseModel):
     total: int = Field(..., ge=0, description="Total doors matching the query.")
     skip: int = Field(..., ge=0, description="Number of skipped doors.")
