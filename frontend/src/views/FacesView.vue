@@ -29,9 +29,9 @@ const page = ref(1)
 const loading = ref(false)
 const loadingUsers = ref(false)
 const error = ref<string | null>(null)
-const deleteDialogOpen = ref(false)
-const deleteTarget = ref<FaceVectorMetadata | null>(null)
-const deleting = ref(false)
+const bulkDeleteDialogOpen = ref(false)
+const bulkDeleteTarget = ref<string[]>([])
+const bulkDeleting = ref(false)
 
 const isAdmin = computed(() => auth.user?.role_name === 'admin')
 const userOptions = computed<SelectOption[]>(() =>
@@ -101,30 +101,46 @@ function changePage(nextPage: number) {
   void loadFaces()
 }
 
-function openDelete(faceId: string) {
-  deleteTarget.value = faces.value.find((face) => face.id === faceId) ?? null
-  deleteDialogOpen.value = deleteTarget.value !== null
+function openBulkDelete(faceIds: string[]) {
+  if (faceIds.length === 0) return
+  bulkDeleteTarget.value = faceIds
+  bulkDeleteDialogOpen.value = true
 }
 
-async function confirmDelete() {
-  if (!selectedUserId.value || !deleteTarget.value) return
+async function confirmBulkDelete() {
+  if (!selectedUserId.value || bulkDeleteTarget.value.length === 0) return
 
-  deleting.value = true
+  const userId = selectedUserId.value
+  const ids = bulkDeleteTarget.value
+  bulkDeleting.value = true
   error.value = null
   try {
-    await deleteUserFaceVectorApiUsersUserIdFacesFaceIdDelete({
-      path: { user_id: selectedUserId.value, face_id: deleteTarget.value.id },
-      throwOnError: true,
+    const results = await Promise.allSettled(
+      ids.map((faceId) =>
+        deleteUserFaceVectorApiUsersUserIdFacesFaceIdDelete({
+          path: { user_id: userId, face_id: faceId },
+          throwOnError: true,
+        }),
+      ),
+    )
+    const failed = results.filter((r) => r.status === 'rejected').length
+    const succeeded = ids.length - failed
+
+    toast.show({
+      title: failed
+        ? `Deleted ${succeeded}, ${failed} failed`
+        : `Deleted ${succeeded} face${succeeded === 1 ? '' : 's'}`,
+      duration: 2600,
     })
-    toast.show({ title: 'Face deleted', duration: 2300 })
-    deleteDialogOpen.value = false
-    deleteTarget.value = null
-    if (faces.value.length === 1 && page.value > 1) page.value -= 1
+
+    bulkDeleteDialogOpen.value = false
+    bulkDeleteTarget.value = []
+    if (faces.value.length === succeeded && page.value > 1) page.value -= 1
     await loadFaces()
   } catch (err) {
-    error.value = errorMessage(err, 'Could not delete face.')
+    error.value = errorMessage(err, 'Could not delete faces.')
   } finally {
-    deleting.value = false
+    bulkDeleting.value = false
   }
 }
 
@@ -159,20 +175,27 @@ onMounted(async () => {
       :page="page"
       :page-size="FACE_LIMIT"
       :loading="loading"
-      @delete="openDelete"
+      @bulk-delete="openBulkDelete"
       @update:page="changePage"
     />
 
-    <Dialog v-model:open="deleteDialogOpen" title="Delete face?">
+    <Dialog v-model:open="bulkDeleteDialogOpen" title="Delete selected faces?">
       <p>
-        This removes the selected face vector permanently. Recognition quality may change
-        immediately.
+        This removes {{ bulkDeleteTarget.length }} face vector(s) permanently. Recognition quality
+        may change immediately.
       </p>
       <template #footer>
-        <Button variant="ghost" size="sm" :disabled="deleting" @click="deleteDialogOpen = false">
+        <Button
+          variant="ghost"
+          size="sm"
+          :disabled="bulkDeleting"
+          @click="bulkDeleteDialogOpen = false"
+        >
           Cancel
         </Button>
-        <Button variant="err" size="sm" :loading="deleting" @click="confirmDelete">Delete</Button>
+        <Button variant="err" size="sm" :loading="bulkDeleting" @click="confirmBulkDelete">
+          Delete
+        </Button>
       </template>
     </Dialog>
   </FacesLayout>
