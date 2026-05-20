@@ -19,6 +19,7 @@ from src.auth.dependencies import require_permission
 from src.core.config import get_settings
 from src.core.database import SessionDep
 from src.core.exceptions import DoorInactiveError, DoorMqttNotConfiguredError
+from src.devices.auth import DeviceAuthError, get_configured_device_door
 from src.doors.mqtt import DoorUnlockPublishError, publish_door_unlock
 from src.doors.schemas import (
     DoorCreateRequest,
@@ -201,11 +202,19 @@ async def recognize_door_endpoint(
     request: Request,
     session: SessionDep,
     engine: EngineDep,
-    _current_user: Annotated[User, Depends(require_permission("door:recognize"))],
 ) -> DoorRecognizeResponse:
-    door = await get_door_by_id(door_id, session)
-    if not door.is_active:
-        raise DoorInactiveError()
+    if request.headers.get("x-device-token") is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing device token",
+        )
+    try:
+        door = await get_configured_device_door(request, door_id, session)
+    except DeviceAuthError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=exc.detail,
+        ) from exc
 
     recognition = await recognize_image_bytes(
         await image.read(),

@@ -11,6 +11,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.auth.utils import create_access_token, hash_password
 from src.access_logs.models import AccessLog
+from src.core.config import get_settings
 from src.doors.models import Door
 from src.faces.service import add_face_vector
 from src.permissions.models import Permission, RolePermission
@@ -126,6 +127,19 @@ async def _create_door(
 
 def _auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
+
+def _device_auth(token: str) -> dict[str, str]:
+    return {"X-Device-Token": token}
+
+
+def _configure_device(
+    monkeypatch: pytest.MonkeyPatch, door: Door, token: str = "device-token"
+) -> str:
+    monkeypatch.setenv("JETSON_DEVICE_TOKEN", token)
+    monkeypatch.setenv("JETSON_DEVICE_DOOR_ID", str(door.id))
+    get_settings.cache_clear()
+    return token
 
 
 def test_doors_router_exposes_expected_routes() -> None:
@@ -554,52 +568,84 @@ async def test_recognize_door_requires_auth(
     )
 
     assert response.status_code == 401
+    assert response.json()["detail"] == "Missing device token"
 
 
 @pytest.mark.asyncio
-async def test_recognize_door_rejects_user_without_permission(
-    client: AsyncClient,
-    database_session: AsyncSession,
-    seeded_roles: dict[str, Role],
-) -> None:
-    user = User(
-        username=f"no_recognize_{uuid4().hex[:10]}",
-        email=f"no_recognize_{uuid4().hex[:10]}@example.com",
-        password_hash=hash_password("UserPass123!"),
-        full_name="No Recognize User",
-        role_id=seeded_roles["user"].id,
-        is_active=True,
-    )
-    database_session.add(user)
-    await database_session.commit()
-    await database_session.refresh(user)
-    door = await _create_door(database_session)
-
-    response = await client.post(
-        f"/api/doors/{door.id}/recognize",
-        files={"image": ("frame.jpg", _make_jpeg_bytes(), "image/jpeg")},
-        headers=_auth(create_access_token(user.id)),
-    )
-
-    assert response.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_recognize_door_returns_404_for_missing_door(
+async def test_recognize_door_rejects_jwt_auth(
     client: AsyncClient,
     database_session: AsyncSession,
     seeded_roles: dict[str, Role],
 ) -> None:
     _, token = await _create_admin_with_token(database_session)
+    door = await _create_door(database_session)
 
     response = await client.post(
-        f"/api/doors/{uuid4()}/recognize",
+        f"/api/doors/{door.id}/recognize",
         files={"image": ("frame.jpg", _make_jpeg_bytes(), "image/jpeg")},
         headers=_auth(token),
     )
 
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Door not found"
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Missing device token"
+
+
+@pytest.mark.asyncio
+async def test_recognize_door_rejects_wrong_device_token(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    door = await _create_door(database_session)
+    _configure_device(monkeypatch, door)
+
+    response = await client.post(
+        f"/api/doors/{door.id}/recognize",
+        files={"image": ("frame.jpg", _make_jpeg_bytes(), "image/jpeg")},
+        headers=_device_auth("wrong-token"),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Invalid device token"
+
+
+@pytest.mark.asyncio
+async def test_recognize_door_rejects_wrong_device_door(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configured_door = await _create_door(database_session)
+    other_door = await _create_door(database_session)
+    token = _configure_device(monkeypatch, configured_door)
+
+    response = await client.post(
+        f"/api/doors/{other_door.id}/recognize",
+        files={"image": ("frame.jpg", _make_jpeg_bytes(), "image/jpeg")},
+        headers=_device_auth(token),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Invalid device token"
+
+
+@pytest.mark.asyncio
+async def test_recognize_door_returns_403_for_unconfigured_door(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    seeded_roles: dict[str, Role],
+) -> None:
+    configured_door = await _create_door(database_session)
+    token = _configure_device(monkeypatch, configured_door)
+
+    response = await client.post(
+        f"/api/doors/{uuid4()}/recognize",
+        files={"image": ("frame.jpg", _make_jpeg_bytes(), "image/jpeg")},
+        headers=_device_auth(token),
+    )
+
+    assert response.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -614,16 +660,16 @@ async def test_recognize_door_rejects_inactive_door_without_recognition(
 
     engine = MagicMock()
     app.dependency_overrides[get_engine] = lambda: engine
-    _, token = await _create_admin_with_token(database_session)
     door = await _create_door(database_session, is_active=False)
+    token = _configure_device(monkeypatch, door)
 
     response = await client.post(
         f"/api/doors/{door.id}/recognize",
         files={"image": ("frame.jpg", _make_jpeg_bytes(), "image/jpeg")},
-        headers=_auth(token),
+        headers=_device_auth(token),
     )
 
-    assert response.status_code == 409
+    assert response.status_code == 403
     assert response.json()["detail"] == "Door is inactive"
     engine.detect_and_embed.assert_not_called()
 
@@ -632,15 +678,16 @@ async def test_recognize_door_rejects_inactive_door_without_recognition(
 async def test_recognize_door_no_face_returns_400_without_access_log(
     client: AsyncClient,
     database_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
     seeded_roles: dict[str, Role],
 ) -> None:
-    _, token = await _create_admin_with_token(database_session)
     door = await _create_door(database_session)
+    token = _configure_device(monkeypatch, door)
 
     response = await client.post(
         f"/api/doors/{door.id}/recognize",
         files={"image": ("frame.jpg", _make_jpeg_bytes(), "image/jpeg")},
-        headers=_auth(token),
+        headers=_device_auth(token),
     )
 
     logs = (
@@ -673,13 +720,13 @@ async def test_recognize_door_unmatched_does_not_open_or_write_access_log(
 
     app.dependency_overrides[get_engine] = lambda: engine
     monkeypatch.setattr(router, "publish_door_unlock", fake_publish)
-    _, token = await _create_admin_with_token(database_session)
     door = await _create_door(database_session)
+    token = _configure_device(monkeypatch, door)
 
     response = await client.post(
         f"/api/doors/{door.id}/recognize",
         files={"image": ("frame.jpg", _make_jpeg_bytes(), "image/jpeg")},
-        headers=_auth(token),
+        headers=_device_auth(token),
     )
 
     logs = (
@@ -722,14 +769,15 @@ async def test_recognize_door_matched_publish_success_writes_access_log(
     app.dependency_overrides[get_engine] = lambda: engine
     monkeypatch.setattr(router, "publish_door_unlock", fake_publish)
     monkeypatch.setattr(app.state, "access_event_broker", broker)
-    user, token = await _create_admin_with_token(database_session)
+    user, _token = await _create_admin_with_token(database_session)
     await add_face_vector(user.id, MOCK_EMBEDDING, database_session)
     door = await _create_door(database_session)
+    token = _configure_device(monkeypatch, door)
 
     response = await client.post(
         f"/api/doors/{door.id}/recognize",
         files={"image": ("frame.jpg", _make_jpeg_bytes(), "image/jpeg")},
-        headers=_auth(token),
+        headers=_device_auth(token),
     )
 
     logs = list(
@@ -779,14 +827,15 @@ async def test_recognize_door_matched_publish_failure_writes_failed_open_log(
     app.dependency_overrides[get_engine] = lambda: engine
     monkeypatch.setattr(router, "publish_door_unlock", fail_publish)
     monkeypatch.setattr(app.state, "access_event_broker", broker)
-    user, token = await _create_admin_with_token(database_session)
+    user, _token = await _create_admin_with_token(database_session)
     await add_face_vector(user.id, MOCK_EMBEDDING, database_session)
     door = await _create_door(database_session)
+    token = _configure_device(monkeypatch, door)
 
     response = await client.post(
         f"/api/doors/{door.id}/recognize",
         files={"image": ("frame.jpg", _make_jpeg_bytes(), "image/jpeg")},
-        headers=_auth(token),
+        headers=_device_auth(token),
     )
 
     logs = list(
@@ -834,14 +883,15 @@ async def test_recognize_door_matched_publish_and_log_failure_returns_500(
     app.dependency_overrides[get_engine] = lambda: engine
     monkeypatch.setattr(router, "publish_door_unlock", fail_publish)
     monkeypatch.setattr(router, "create_access_log", fail_create_access_log)
-    user, token = await _create_admin_with_token(database_session)
+    user, _token = await _create_admin_with_token(database_session)
     await add_face_vector(user.id, MOCK_EMBEDDING, database_session)
     door = await _create_door(database_session)
+    token = _configure_device(monkeypatch, door)
 
     response = await client.post(
         f"/api/doors/{door.id}/recognize",
         files={"image": ("frame.jpg", _make_jpeg_bytes(), "image/jpeg")},
-        headers=_auth(token),
+        headers=_device_auth(token),
     )
 
     assert response.status_code == 500
