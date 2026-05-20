@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import src.core.database as db
 import src.faces.engine as face_engine
+from src.access_events.broker import AccessEventBroker
 from src.access_logs.router import router as access_logs_router
 from src.auth.router import router as auth_router
 from src.auth.service import ensure_default_admin
@@ -42,6 +43,7 @@ def create_app() -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
+    app.state.access_event_broker = AccessEventBroker()
 
     app.add_middleware(
         CORSMiddleware,
