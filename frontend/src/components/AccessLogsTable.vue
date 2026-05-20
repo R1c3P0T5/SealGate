@@ -72,7 +72,7 @@ const rows = computed(() =>
       :center="true"
     />
     <div v-else class="grid gap-3">
-      <Table :columns="columns" :rows="rows" equal-cols>
+      <Table :columns="columns" :rows="rows">
         <template #cell-time="{ row }">
           <span class="whitespace-nowrap">{{ row.time }}</span>
         </template>
