@@ -54,8 +54,9 @@ def test_publish_door_unlock_sync_publishes_expected_topic(
     monkeypatch.setenv("MQTT_PORT", "1884")
     monkeypatch.setenv("MQTT_USERNAME", "worker")
     monkeypatch.setenv("MQTT_PASSWORD", "secret")
-    monkeypatch.setenv("MQTT_UNLOCK_TOPIC_TEMPLATE", "facelock/{mqtt_id}/cmd")
-    monkeypatch.setenv("MQTT_UNLOCK_PAYLOAD", "open")
+    monkeypatch.setenv("MQTT_UNLOCK_TOPIC_TEMPLATE", "doors/{mqtt_id}")
+    monkeypatch.setenv("MQTT_UNLOCK_PAYLOAD", "1")
+    monkeypatch.setenv("MQTT_LOCK_PAYLOAD", "0")
     client = _FakeMqttClient()
     door = Door(name="Front", mqtt_id="front-gate")
 
@@ -64,7 +65,10 @@ def test_publish_door_unlock_sync_publishes_expected_topic(
     assert client.username == "worker"
     assert client.password == "secret"
     assert client.connected_to == ("mqtt.local", 1884)
-    assert client.published == [("facelock/front-gate/cmd", "open")]
+    assert client.published == [
+        ("doors/front-gate", "1"),
+        ("doors/front-gate", "0"),
+    ]
     assert client.disconnected is True
 
 
