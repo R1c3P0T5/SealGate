@@ -1,6 +1,11 @@
 # IDE
 .vscode/*
 
+# Python
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+
 # AI Agent
 .claude/*
 .codex/*
