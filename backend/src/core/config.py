@@ -24,8 +24,9 @@ class Settings(BaseSettings):
     MQTT_PORT: int = 1883
     MQTT_USERNAME: str | None = None
     MQTT_PASSWORD: str | None = None
-    MQTT_UNLOCK_TOPIC_TEMPLATE: str = "doors/{mqtt_id}/unlock"
-    MQTT_UNLOCK_PAYLOAD: str = "unlock"
+    MQTT_UNLOCK_TOPIC_TEMPLATE: str = "doors/{mqtt_id}"
+    MQTT_UNLOCK_PAYLOAD: str = "1"
+    MQTT_LOCK_PAYLOAD: str = "0"
 
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
 
