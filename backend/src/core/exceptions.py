@@ -89,3 +89,13 @@ class DoorNameAlreadyExistsError(BaseAPIError):
 class DoorMqttIdAlreadyExistsError(BaseAPIError):
     status_code = 400
     detail = "Door MQTT ID already in use"
+
+
+class DoorInactiveError(BaseAPIError):
+    status_code = 409
+    detail = "Door is inactive"
+
+
+class DoorMqttNotConfiguredError(BaseAPIError):
+    status_code = 409
+    detail = "Door MQTT ID is not configured"

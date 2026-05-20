@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     FACE_DETECTOR_MODEL: Path = Path("models/face_detection_yunet_2023mar.onnx")
     FACE_RECOGNIZER_MODEL: Path = Path("models/face_recognition_sface_2021dec.onnx")
     COSINE_THRESHOLD: float = 0.363
+    MQTT_HOST: str = "localhost"
+    MQTT_PORT: int = 1883
+    MQTT_USERNAME: str | None = None
+    MQTT_PASSWORD: str | None = None
+    MQTT_UNLOCK_TOPIC_TEMPLATE: str = "doors/{mqtt_id}/unlock"
+    MQTT_UNLOCK_PAYLOAD: str = "unlock"
 
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
 
