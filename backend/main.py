@@ -11,6 +11,7 @@ from src.access_events.router import router as access_events_router
 from src.access_logs.router import router as access_logs_router
 from src.auth.router import router as auth_router
 from src.auth.service import ensure_default_admin
+from src.camera.broker import CameraFrameBroker
 from src.camera.router import router as camera_router
 from src.core.config import get_settings
 from src.doors.router import router as doors_router
@@ -49,6 +50,7 @@ def create_app() -> FastAPI:
     )
     app.state.access_event_broker = AccessEventBroker()
     app.state.ws_ticket_store = WebSocketTicketStore()
+    app.state.camera_frame_broker = CameraFrameBroker()
 
     app.add_middleware(
         CORSMiddleware,
