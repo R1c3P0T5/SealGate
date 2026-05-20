@@ -62,6 +62,17 @@ class DoorUnlockResponse(BaseModel):
     )
 
 
+class DoorRecognizeResponse(BaseModel):
+    matched: bool = Field(description="Whether the image matched a registered face.")
+    user_id: UUID | None = Field(default=None, description="Matched user identifier.")
+    username: str | None = Field(default=None, description="Matched username.")
+    confidence: float = Field(description="Recognition confidence score.")
+    door_opened: bool = Field(description="Whether the backend sent an open command.")
+    access_log_id: UUID | None = Field(
+        default=None, description="Access log entry written for this recognition."
+    )
+
+
 class DoorListResponse(BaseModel):
     total: int = Field(..., ge=0, description="Total doors matching the query.")
     skip: int = Field(..., ge=0, description="Number of skipped doors.")

@@ -1,5 +1,8 @@
+from unittest.mock import MagicMock
 from uuid import uuid4
 
+import cv2
+import numpy as np
 import pytest
 from fastapi.routing import APIRoute
 from httpx import AsyncClient
@@ -9,9 +12,13 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from src.auth.utils import create_access_token, hash_password
 from src.access_logs.models import AccessLog
 from src.doors.models import Door
+from src.faces.service import add_face_vector
 from src.permissions.models import Permission, RolePermission
 from src.roles.models import Role
 from src.users.models import User
+
+
+MOCK_EMBEDDING = np.random.default_rng(42).random(128, dtype=np.float32).tobytes()
 
 
 class _FakeAccessEventBroker:
@@ -20,6 +27,12 @@ class _FakeAccessEventBroker:
 
     async def publish(self, event) -> None:
         self.events.append(event)
+
+
+def _make_jpeg_bytes() -> bytes:
+    img = np.zeros((10, 10, 3), dtype=np.uint8)
+    _, encoded = cv2.imencode(".jpg", img)
+    return encoded.tobytes()
 
 
 async def _grant_role_permission(
@@ -53,6 +66,7 @@ async def _create_admin_with_token(session: AsyncSession) -> tuple[User, str]:
         "door:update",
         "door:delete",
         "door:unlock",
+        "door:recognize",
     ):
         await _grant_role_permission(session, role, permission_name)
 
@@ -130,6 +144,7 @@ def test_doors_router_exposes_expected_routes() -> None:
     assert ("/api/doors/{door_id}", ("PUT",)) in routes
     assert ("/api/doors/{door_id}", ("DELETE",)) in routes
     assert ("/api/doors/{door_id}/unlock", ("POST",)) in routes
+    assert ("/api/doors/{door_id}/recognize", ("POST",)) in routes
 
 
 @pytest.mark.asyncio
@@ -523,3 +538,311 @@ async def test_unlock_door_returns_success_when_access_log_write_fails(
     assert response.status_code == 200
     assert response.json()["access_log_id"] is None
     assert "Failed to write access log for manual door unlock" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_recognize_door_requires_auth(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
+    door = await _create_door(database_session)
+
+    response = await client.post(
+        f"/api/doors/{door.id}/recognize",
+        files={"image": ("frame.jpg", _make_jpeg_bytes(), "image/jpeg")},
+    )
+
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_recognize_door_rejects_user_without_permission(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
+    user = User(
+        username=f"no_recognize_{uuid4().hex[:10]}",
+        email=f"no_recognize_{uuid4().hex[:10]}@example.com",
+        password_hash=hash_password("UserPass123!"),
+        full_name="No Recognize User",
+        role_id=seeded_roles["user"].id,
+        is_active=True,
+    )
+    database_session.add(user)
+    await database_session.commit()
+    await database_session.refresh(user)
+    door = await _create_door(database_session)
+
+    response = await client.post(
+        f"/api/doors/{door.id}/recognize",
+        files={"image": ("frame.jpg", _make_jpeg_bytes(), "image/jpeg")},
+        headers=_auth(create_access_token(user.id)),
+    )
+
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_recognize_door_returns_404_for_missing_door(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
+    _, token = await _create_admin_with_token(database_session)
+
+    response = await client.post(
+        f"/api/doors/{uuid4()}/recognize",
+        files={"image": ("frame.jpg", _make_jpeg_bytes(), "image/jpeg")},
+        headers=_auth(token),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Door not found"
+
+
+@pytest.mark.asyncio
+async def test_recognize_door_rejects_inactive_door_without_recognition(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    seeded_roles: dict[str, Role],
+) -> None:
+    from main import app
+    from src.faces.engine import get_engine
+
+    engine = MagicMock()
+    app.dependency_overrides[get_engine] = lambda: engine
+    _, token = await _create_admin_with_token(database_session)
+    door = await _create_door(database_session, is_active=False)
+
+    response = await client.post(
+        f"/api/doors/{door.id}/recognize",
+        files={"image": ("frame.jpg", _make_jpeg_bytes(), "image/jpeg")},
+        headers=_auth(token),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Door is inactive"
+    engine.detect_and_embed.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_recognize_door_no_face_returns_400_without_access_log(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
+    _, token = await _create_admin_with_token(database_session)
+    door = await _create_door(database_session)
+
+    response = await client.post(
+        f"/api/doors/{door.id}/recognize",
+        files={"image": ("frame.jpg", _make_jpeg_bytes(), "image/jpeg")},
+        headers=_auth(token),
+    )
+
+    logs = (
+        await database_session.exec(
+            select(AccessLog).where(AccessLog.door_id == door.id)
+        )
+    ).all()
+    assert response.status_code == 400
+    assert response.json()["detail"] == "No face detected in the provided image"
+    assert list(logs) == []
+
+
+@pytest.mark.asyncio
+async def test_recognize_door_unmatched_does_not_open_or_write_access_log(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    seeded_roles: dict[str, Role],
+) -> None:
+    from main import app
+    from src.faces.engine import get_engine
+    import src.doors.router as router
+
+    engine = MagicMock()
+    engine.detect_and_embed.return_value = MOCK_EMBEDDING
+    published_doors: list[Door] = []
+
+    async def fake_publish(door: Door) -> None:
+        published_doors.append(door)
+
+    app.dependency_overrides[get_engine] = lambda: engine
+    monkeypatch.setattr(router, "publish_door_unlock", fake_publish)
+    _, token = await _create_admin_with_token(database_session)
+    door = await _create_door(database_session)
+
+    response = await client.post(
+        f"/api/doors/{door.id}/recognize",
+        files={"image": ("frame.jpg", _make_jpeg_bytes(), "image/jpeg")},
+        headers=_auth(token),
+    )
+
+    logs = (
+        await database_session.exec(
+            select(AccessLog).where(AccessLog.door_id == door.id)
+        )
+    ).all()
+    assert response.status_code == 200
+    assert response.json() == {
+        "matched": False,
+        "user_id": None,
+        "username": None,
+        "confidence": 0.0,
+        "door_opened": False,
+        "access_log_id": None,
+    }
+    assert published_doors == []
+    assert list(logs) == []
+
+
+@pytest.mark.asyncio
+async def test_recognize_door_matched_publish_success_writes_access_log(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    seeded_roles: dict[str, Role],
+) -> None:
+    from main import app
+    from src.faces.engine import get_engine
+    import src.doors.router as router
+
+    engine = MagicMock()
+    engine.detect_and_embed.return_value = MOCK_EMBEDDING
+    published_doors: list[Door] = []
+
+    async def fake_publish(door: Door) -> None:
+        published_doors.append(door)
+
+    broker = _FakeAccessEventBroker()
+    app.dependency_overrides[get_engine] = lambda: engine
+    monkeypatch.setattr(router, "publish_door_unlock", fake_publish)
+    monkeypatch.setattr(app.state, "access_event_broker", broker)
+    user, token = await _create_admin_with_token(database_session)
+    await add_face_vector(user.id, MOCK_EMBEDDING, database_session)
+    door = await _create_door(database_session)
+
+    response = await client.post(
+        f"/api/doors/{door.id}/recognize",
+        files={"image": ("frame.jpg", _make_jpeg_bytes(), "image/jpeg")},
+        headers=_auth(token),
+    )
+
+    logs = list(
+        (
+            await database_session.exec(
+                select(AccessLog).where(AccessLog.door_id == door.id)
+            )
+        ).all()
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["matched"] is True
+    assert data["user_id"] == str(user.id)
+    assert data["username"] == user.username
+    assert data["confidence"] == pytest.approx(1.0, abs=1e-5)
+    assert data["door_opened"] is True
+    assert data["access_log_id"] == str(logs[0].id)
+    assert published_doors == [door]
+    assert len(logs) == 1
+    assert logs[0].user_id == user.id
+    assert logs[0].username == user.username
+    assert logs[0].confidence == pytest.approx(1.0, abs=1e-5)
+    assert logs[0].door_opened is True
+    assert len(broker.events) == 1
+    assert broker.events[0].id == logs[0].id
+
+
+@pytest.mark.asyncio
+async def test_recognize_door_matched_publish_failure_writes_failed_open_log(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    seeded_roles: dict[str, Role],
+) -> None:
+    from main import app
+    from src.doors.mqtt import DoorUnlockPublishError
+    from src.faces.engine import get_engine
+    import src.doors.router as router
+
+    engine = MagicMock()
+    engine.detect_and_embed.return_value = MOCK_EMBEDDING
+
+    async def fail_publish(_door: Door) -> None:
+        raise DoorUnlockPublishError("offline")
+
+    broker = _FakeAccessEventBroker()
+    app.dependency_overrides[get_engine] = lambda: engine
+    monkeypatch.setattr(router, "publish_door_unlock", fail_publish)
+    monkeypatch.setattr(app.state, "access_event_broker", broker)
+    user, token = await _create_admin_with_token(database_session)
+    await add_face_vector(user.id, MOCK_EMBEDDING, database_session)
+    door = await _create_door(database_session)
+
+    response = await client.post(
+        f"/api/doors/{door.id}/recognize",
+        files={"image": ("frame.jpg", _make_jpeg_bytes(), "image/jpeg")},
+        headers=_auth(token),
+    )
+
+    logs = list(
+        (
+            await database_session.exec(
+                select(AccessLog).where(AccessLog.door_id == door.id)
+            )
+        ).all()
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["matched"] is True
+    assert data["user_id"] == str(user.id)
+    assert data["username"] == user.username
+    assert data["confidence"] == pytest.approx(1.0, abs=1e-5)
+    assert data["door_opened"] is False
+    assert data["access_log_id"] == str(logs[0].id)
+    assert len(logs) == 1
+    assert logs[0].door_opened is False
+    assert len(broker.events) == 1
+    assert broker.events[0].id == logs[0].id
+
+
+@pytest.mark.asyncio
+async def test_recognize_door_matched_publish_and_log_failure_returns_500(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    seeded_roles: dict[str, Role],
+) -> None:
+    from main import app
+    from src.doors.mqtt import DoorUnlockPublishError
+    from src.faces.engine import get_engine
+    import src.doors.router as router
+
+    engine = MagicMock()
+    engine.detect_and_embed.return_value = MOCK_EMBEDDING
+
+    async def fail_publish(_door: Door) -> None:
+        raise DoorUnlockPublishError("offline")
+
+    async def fail_create_access_log(*_args, **_kwargs) -> None:
+        raise RuntimeError("db down")
+
+    app.dependency_overrides[get_engine] = lambda: engine
+    monkeypatch.setattr(router, "publish_door_unlock", fail_publish)
+    monkeypatch.setattr(router, "create_access_log", fail_create_access_log)
+    user, token = await _create_admin_with_token(database_session)
+    await add_face_vector(user.id, MOCK_EMBEDDING, database_session)
+    door = await _create_door(database_session)
+
+    response = await client.post(
+        f"/api/doors/{door.id}/recognize",
+        files={"image": ("frame.jpg", _make_jpeg_bytes(), "image/jpeg")},
+        headers=_auth(token),
+    )
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Failed to record door recognition event"
