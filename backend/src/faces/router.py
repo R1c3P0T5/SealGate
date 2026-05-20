@@ -1,8 +1,6 @@
 from typing import Annotated
 from uuid import UUID
 
-import cv2
-import numpy as np
 from fastapi import (
     APIRouter,
     Depends,
@@ -11,30 +9,24 @@ from fastapi import (
     UploadFile,
     status,
 )
-from sqlmodel.ext.asyncio.session import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
 from src.auth.dependencies import get_current_user
-from src.core.config import get_settings
 from src.core.database import SessionDep
-from src.core.exceptions import (
-    InvalidImageError,
-    NoFaceDetectedError,
-)
+from src.core.exceptions import NoFaceDetectedError
 from src.core.permissions import check_access
-from src.faces.engine import EngineDep, FaceEngine
+from src.faces.engine import EngineDep
 from src.faces.models import FaceVector
 from src.faces.schemas import (
     FaceVectorListResponse,
     FaceVectorMetadata,
-    RecognizeResponse,
 )
 from src.faces.service import (
     MAX_FACE_VECTORS_PER_USER,
     add_face_vector,
+    decode_image,
     delete_face_vector,
     list_face_vectors,
-    recognize_face_vector,
 )
 from src.users.models import User
 
@@ -47,33 +39,6 @@ def _to_metadata(face: FaceVector) -> FaceVectorMetadata:
         id=face.id,
         embedding_size=len(face.embedding),
         created_at=face.created_at,
-    )
-
-
-def _decode_image(data: bytes) -> np.ndarray:
-    arr = np.frombuffer(data, dtype=np.uint8)
-    image = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-    if image is None:
-        raise InvalidImageError()
-    return image
-
-
-async def _recognize_image_bytes(
-    data: bytes,
-    session: AsyncSession,
-    engine: FaceEngine,
-    threshold: float,
-) -> RecognizeResponse:
-    def _decode_and_embed() -> bytes | None:
-        return engine.detect_and_embed(_decode_image(data))
-
-    embedding = await run_in_threadpool(_decode_and_embed)
-    if embedding is None:
-        raise NoFaceDetectedError()
-    return await recognize_face_vector(
-        embedding,
-        session,
-        threshold,
     )
 
 
@@ -144,32 +109,9 @@ async def add_face_from_image(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> FaceVectorMetadata:
     await check_access(current_user, user_id, "face:create", session)
-    image_bgr = _decode_image(await image.read())
+    image_bgr = decode_image(await image.read())
     embedding = await run_in_threadpool(engine.detect_and_embed, image_bgr)
     if embedding is None:
         raise NoFaceDetectedError()
     face = await add_face_vector(user_id, embedding, session)
     return _to_metadata(face)
-
-
-@router.post(
-    "/api/faces/recognize/from-image",
-    response_model=RecognizeResponse,
-    summary="Recognize a face from image",
-    description=(
-        "Upload an image. The backend detects the largest face, computes an "
-        "embedding, and returns the closest matching user above the configured "
-        "threshold. No authentication required."
-    ),
-)
-async def recognize_face_from_image(
-    image: UploadFile,
-    session: SessionDep,
-    engine: EngineDep,
-) -> RecognizeResponse:
-    return await _recognize_image_bytes(
-        await image.read(),
-        session,
-        engine,
-        get_settings().COSINE_THRESHOLD,
-    )

@@ -1,17 +1,33 @@
 from uuid import UUID
 
+import cv2
 import numpy as np
 from sqlalchemy import func
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
-from src.core.exceptions import FaceVectorLimitExceededError, FaceVectorNotFoundError
+from src.core.exceptions import (
+    FaceVectorLimitExceededError,
+    FaceVectorNotFoundError,
+    InvalidImageError,
+    NoFaceDetectedError,
+)
+from src.faces.engine import FaceEngine
 from src.faces.models import FaceVector
 from src.faces.schemas import EMBEDDING_DIM, RecognizeResponse
 from src.users.models import User
 
 
 MAX_FACE_VECTORS_PER_USER = 100
+
+
+def decode_image(data: bytes) -> np.ndarray:
+    arr = np.frombuffer(data, dtype=np.uint8)
+    image = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if image is None:
+        raise InvalidImageError()
+    return image
 
 
 async def list_face_vectors(
@@ -130,4 +146,23 @@ async def recognize_face_vector(
         user_id=user.id,
         username=user.username,
         confidence=best_score,
+    )
+
+
+async def recognize_image_bytes(
+    data: bytes,
+    session: AsyncSession,
+    engine: FaceEngine,
+    threshold: float,
+) -> RecognizeResponse:
+    def _decode_and_embed() -> bytes | None:
+        return engine.detect_and_embed(decode_image(data))
+
+    embedding = await run_in_threadpool(_decode_and_embed)
+    if embedding is None:
+        raise NoFaceDetectedError()
+    return await recognize_face_vector(
+        embedding,
+        session,
+        threshold,
     )
