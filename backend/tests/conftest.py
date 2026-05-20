@@ -105,6 +105,7 @@ async def seeded_roles(database_session: AsyncSession) -> dict[str, Role]:
         "door:lock",
         "door:unlock",
         "door:recognize",
+        "camera:preview",
         "log:read",
         "log:delete",
         "face:create",

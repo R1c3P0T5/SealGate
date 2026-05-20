@@ -17,6 +17,8 @@ from src.faces.router import router as faces_router
 from src.permissions.router import router as permissions_router
 from src.roles.router import router as roles_router
 from src.users.router import router as users_router
+from src.ws_tickets.router import router as ws_tickets_router
+from src.ws_tickets.store import WebSocketTicketStore
 import src.roles.models as _roles_models  # noqa: F401
 import src.permissions.models as _permissions_models  # noqa: F401
 
@@ -45,6 +47,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     app.state.access_event_broker = AccessEventBroker()
+    app.state.ws_ticket_store = WebSocketTicketStore()
 
     app.add_middleware(
         CORSMiddleware,
@@ -63,6 +66,7 @@ def create_app() -> FastAPI:
     app.include_router(doors_router)
     app.include_router(access_logs_router)
     app.include_router(access_events_router)
+    app.include_router(ws_tickets_router)
     app.include_router(roles_router)
     app.include_router(permissions_router)
 
