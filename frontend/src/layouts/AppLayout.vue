@@ -14,15 +14,16 @@ const auth = useAuthStore()
 const sidebarOpen = ref(false)
 
 const navItems = computed<NavItemDef[]>(() => {
+  const isAdmin = auth.user?.role_name === 'admin'
   const items: NavItemDef[] = [{ key: 'dashboard', label: 'Dashboard', href: '/' }]
-  if (auth.user?.role_name === 'admin') {
+  if (isAdmin) {
     items.push({ key: 'recognize', label: 'Live Recognition', href: '/recognize' })
   }
-  items.push(
-    { key: 'faces', label: 'Face Management', href: '/faces' },
-    { key: 'access-logs', label: 'Access Logs', href: '/access-logs' },
-    { key: 'settings', label: 'Settings', href: '/settings' },
-  )
+  items.push({ key: 'faces', label: 'Face Management', href: '/faces' })
+  if (isAdmin) {
+    items.push({ key: 'access-logs', label: 'Access Logs', href: '/access-logs' })
+  }
+  items.push({ key: 'settings', label: 'Settings', href: '/settings' })
   return items
 })
 

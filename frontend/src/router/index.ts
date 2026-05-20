@@ -49,6 +49,7 @@ const router = createRouter({
           path: 'access-logs',
           name: 'access-logs',
           component: () => import('@/views/AccessLogsView.vue'),
+          meta: { adminOnly: true },
         },
         { path: 'settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },
       ],
