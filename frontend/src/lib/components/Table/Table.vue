@@ -14,6 +14,8 @@ const props = defineProps<{
   rows: Record<string, unknown>[]
   sortKey?: string
   sortDir?: SortDir
+  fit?: boolean
+  equalCols?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -29,13 +31,17 @@ const handleSort = (col: TableColumn) => {
 
 <template>
   <div class="overflow-x-auto">
-    <table class="w-full border-collapse">
+    <table
+      class="border-collapse"
+      :class="[props.fit ? 'mx-auto w-auto' : 'w-full', props.equalCols && 'table-fixed']"
+    >
       <thead>
         <tr>
           <th
             v-for="col in columns"
             :key="col.key"
-            class="border-b border-border px-2 py-2.5 text-left font-mono text-[11px] uppercase tracking-[0.1em] whitespace-nowrap text-text-placeholder"
+            class="border-b border-border py-2.5 text-left font-mono text-[11px] uppercase tracking-[0.1em] whitespace-nowrap text-text-placeholder"
+            :class="props.fit ? 'px-4' : 'px-2'"
           >
             <button
               v-if="col.sortable"
@@ -58,7 +64,8 @@ const handleSort = (col: TableColumn) => {
           <td
             v-for="col in columns"
             :key="col.key"
-            class="border-b border-border-soft px-2 py-2.5 text-sm tabular-nums text-text-lo group-last:border-b-0"
+            class="border-b border-border-soft py-2.5 text-sm tabular-nums text-text-lo group-last:border-b-0"
+            :class="props.fit ? 'px-4' : 'px-2'"
           >
             <slot :name="`cell-${col.key}`" :row="row" :value="row[col.key]">
               {{ row[col.key] }}
