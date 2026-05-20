@@ -140,3 +140,41 @@ async def test_lifespan_seeds_door_recognize_for_admin_only() -> None:
 
             assert admin_grant is not None
             assert user_grant is None
+
+
+@pytest.mark.asyncio
+async def test_lifespan_seeds_camera_preview_for_admin_only() -> None:
+    async with lifespan(create_app()):
+        assert db.async_session is not None
+        async with db.async_session() as session:
+            permission = (
+                await session.exec(
+                    select(Permission).where(Permission.name == "camera:preview")
+                )
+            ).one()
+            admin_role = (
+                await session.exec(select(Role).where(Role.name == "admin"))
+            ).one()
+            user_role = (
+                await session.exec(select(Role).where(Role.name == "user"))
+            ).one()
+
+            admin_grant = (
+                await session.exec(
+                    select(RolePermission).where(
+                        RolePermission.role_id == admin_role.id,
+                        RolePermission.permission_id == permission.id,
+                    )
+                )
+            ).one_or_none()
+            user_grant = (
+                await session.exec(
+                    select(RolePermission).where(
+                        RolePermission.role_id == user_role.id,
+                        RolePermission.permission_id == permission.id,
+                    )
+                )
+            ).one_or_none()
+
+            assert admin_grant is not None
+            assert user_grant is None

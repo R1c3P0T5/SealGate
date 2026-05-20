@@ -80,6 +80,7 @@ async def seed_roles_and_permissions() -> None:
         ("door:lock", "Lock door"),
         ("door:unlock", "Unlock door"),
         ("door:recognize", "Run door face recognition"),
+        ("camera:preview", "Preview live camera streams"),
         ("log:read", "Read access logs"),
         ("log:delete", "Delete access logs"),
     ]
