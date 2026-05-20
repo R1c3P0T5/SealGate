@@ -1,3 +1,4 @@
+import time
 from typing import Protocol
 
 from paho.mqtt import client as mqtt
@@ -63,13 +64,18 @@ def _publish_door_unlock_sync(
 
     try:
         result = mqtt_client.publish(topic, settings.MQTT_UNLOCK_PAYLOAD)
+        if result.rc != mqtt.MQTT_ERR_SUCCESS:
+            raise DoorUnlockPublishError("Failed to publish door unlock command")
+        time.sleep(0.5)
+        result = mqtt_client.publish(topic, settings.MQTT_LOCK_PAYLOAD)
+        if result.rc != mqtt.MQTT_ERR_SUCCESS:
+            raise DoorUnlockPublishError("Failed to publish door unlock command")
+    except DoorUnlockPublishError:
+        raise
     except Exception as exc:
         raise DoorUnlockPublishError("Failed to publish door unlock command") from exc
     finally:
         _disconnect_quietly(mqtt_client)
-
-    if result.rc != mqtt.MQTT_ERR_SUCCESS:
-        raise DoorUnlockPublishError("Failed to publish door unlock command")
 
 
 async def publish_door_unlock(door: Door) -> None:
