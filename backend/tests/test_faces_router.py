@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 import pytest
 import pytest_asyncio
+from fastapi.routing import APIRoute
 from httpx import ASGITransport, AsyncClient
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -48,6 +49,18 @@ async def _create_user_with_token(
 
 def _auth_headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
+
+def test_faces_router_does_not_expose_generic_recognize_endpoint() -> None:
+    from src.faces.router import router
+
+    routes = {
+        (route.path, tuple(sorted(route.methods or [])))
+        for route in router.routes
+        if isinstance(route, APIRoute)
+    }
+
+    assert ("/api/faces/recognize/from-image", ("POST",)) not in routes
 
 
 @pytest_asyncio.fixture
@@ -272,59 +285,12 @@ async def test_add_face_from_image_offloads_face_engine_to_threadpool(
 
 
 @pytest.mark.asyncio
-async def test_recognize_from_image_no_face_returns_400(
-    client: AsyncClient,
-) -> None:
-    response = await client.post(
-        "/api/faces/recognize/from-image",
-        files={"image": ("frame.jpg", _make_jpeg_bytes(), "image/jpeg")},
-    )
-
-    assert response.status_code == 400
-    assert response.json()["detail"] == "No face detected in the provided image"
-
-
-@pytest.mark.asyncio
-async def test_recognize_from_image_requires_no_auth(
-    client_with_face: AsyncClient,
-) -> None:
-    response = await client_with_face.post(
-        "/api/faces/recognize/from-image",
-        files={"image": ("frame.jpg", _make_jpeg_bytes(), "image/jpeg")},
-    )
-
-    assert response.status_code == 200
-
-
-@pytest.mark.asyncio
-async def test_recognize_from_image_matched(
-    client_with_face: AsyncClient,
-    database_session: AsyncSession,
-    seeded_roles: dict[str, Role],
-) -> None:
-    user, _ = await _create_user_with_token(database_session)
-    await add_face_vector(user.id, MOCK_EMBEDDING, database_session)
-
-    response = await client_with_face.post(
-        "/api/faces/recognize/from-image",
-        files={"image": ("frame.jpg", _make_jpeg_bytes(), "image/jpeg")},
-    )
-
-    assert response.status_code == 200
-    data = response.json()
-    assert data["matched"] is True
-    assert data["user_id"] == str(user.id)
-    assert data["username"] == user.username
-    assert data["confidence"] == pytest.approx(1.0, abs=1e-5)
-
-
-@pytest.mark.asyncio
 async def test_recognize_image_bytes_offloads_face_engine_to_threadpool(
     database_session: AsyncSession,
     seeded_roles: dict[str, Role],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import src.faces.router as router
+    import src.faces.service as face_service
 
     user, _ = await _create_user_with_token(database_session)
     await add_face_vector(user.id, MOCK_EMBEDDING, database_session)
@@ -336,13 +302,9 @@ async def test_recognize_image_bytes_offloads_face_engine_to_threadpool(
         threadpool_calls.append((func, args, kwargs))
         return func(*args, **kwargs)
 
-    monkeypatch.setattr(
-        router,
-        "run_in_threadpool",
-        fake_run_in_threadpool,
-    )
+    monkeypatch.setattr(face_service, "run_in_threadpool", fake_run_in_threadpool)
 
-    response = await router._recognize_image_bytes(
+    response = await face_service.recognize_image_bytes(
         _make_jpeg_bytes(),
         database_session,
         engine,
