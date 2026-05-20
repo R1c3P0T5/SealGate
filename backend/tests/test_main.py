@@ -5,6 +5,7 @@ from sqlmodel import select
 import src.core.database as db
 from main import app, create_app, lifespan
 from src.core.config import get_settings
+from src.permissions.models import Permission, RolePermission
 from src.roles.models import Role
 from src.users.models import User
 
@@ -69,6 +70,7 @@ def test_openapi_docs_include_operation_and_schema_descriptions() -> None:
         ("/api/users/{user_id}", "delete"): "Delete user",
         ("/api/access-logs", "get"): "List access logs",
         ("/api/doors/{door_id}/unlock", "post"): "Unlock door",
+        ("/api/doors/{door_id}/recognize", "post"): "Recognize door access",
     }
 
     for (path, method), summary in expected_summaries.items():
@@ -100,3 +102,41 @@ async def test_lifespan_seeds_configured_default_admin(
             role = await session.get(Role, admin.role_id)
             assert role is not None
             assert role.name == "admin"
+
+
+@pytest.mark.asyncio
+async def test_lifespan_seeds_door_recognize_for_admin_only() -> None:
+    async with lifespan(create_app()):
+        assert db.async_session is not None
+        async with db.async_session() as session:
+            permission = (
+                await session.exec(
+                    select(Permission).where(Permission.name == "door:recognize")
+                )
+            ).one()
+            admin_role = (
+                await session.exec(select(Role).where(Role.name == "admin"))
+            ).one()
+            user_role = (
+                await session.exec(select(Role).where(Role.name == "user"))
+            ).one()
+
+            admin_grant = (
+                await session.exec(
+                    select(RolePermission).where(
+                        RolePermission.role_id == admin_role.id,
+                        RolePermission.permission_id == permission.id,
+                    )
+                )
+            ).one_or_none()
+            user_grant = (
+                await session.exec(
+                    select(RolePermission).where(
+                        RolePermission.role_id == user_role.id,
+                        RolePermission.permission_id == permission.id,
+                    )
+                )
+            ).one_or_none()
+
+            assert admin_grant is not None
+            assert user_grant is None

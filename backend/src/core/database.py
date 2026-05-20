@@ -79,6 +79,7 @@ async def seed_roles_and_permissions() -> None:
         ("door:delete", "Delete doors"),
         ("door:lock", "Lock door"),
         ("door:unlock", "Unlock door"),
+        ("door:recognize", "Run door face recognition"),
         ("log:read", "Read access logs"),
         ("log:delete", "Delete access logs"),
     ]

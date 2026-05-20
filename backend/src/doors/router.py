@@ -2,17 +2,28 @@ import logging
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Path,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 
 from src.access_logs.schemas import AccessLogCreate, AccessLogResponse
 from src.access_logs.service import create_access_log
 from src.auth.dependencies import require_permission
-from src.core.exceptions import DoorInactiveError, DoorMqttNotConfiguredError
+from src.core.config import get_settings
 from src.core.database import SessionDep
+from src.core.exceptions import DoorInactiveError, DoorMqttNotConfiguredError
 from src.doors.mqtt import DoorUnlockPublishError, publish_door_unlock
 from src.doors.schemas import (
     DoorCreateRequest,
     DoorListResponse,
+    DoorRecognizeResponse,
     DoorResponse,
     DoorUnlockResponse,
     DoorUpdateRequest,
@@ -24,6 +35,8 @@ from src.doors.service import (
     list_doors,
     update_door,
 )
+from src.faces.engine import EngineDep
+from src.faces.service import recognize_image_bytes
 from src.users.models import User
 
 
@@ -168,6 +181,85 @@ async def unlock_door_endpoint(
         await session.rollback()
         logger.exception("Failed to write access log for manual door unlock")
         return response
+
+    response.access_log_id = access_log.id
+    await request.app.state.access_event_broker.publish(
+        AccessLogResponse.model_validate(access_log)
+    )
+    return response
+
+
+@router.post(
+    "/{door_id}/recognize",
+    response_model=DoorRecognizeResponse,
+    summary="Recognize door access",
+    description="Recognize a face for this door and open it when a match is found.",
+)
+async def recognize_door_endpoint(
+    door_id: Annotated[UUID, Path(description="Door ID for this recognition attempt.")],
+    image: UploadFile,
+    request: Request,
+    session: SessionDep,
+    engine: EngineDep,
+    _current_user: Annotated[User, Depends(require_permission("door:recognize"))],
+) -> DoorRecognizeResponse:
+    door = await get_door_by_id(door_id, session)
+    if not door.is_active:
+        raise DoorInactiveError()
+
+    recognition = await recognize_image_bytes(
+        await image.read(),
+        session,
+        engine,
+        get_settings().COSINE_THRESHOLD,
+    )
+    if not recognition.matched:
+        return DoorRecognizeResponse(
+            matched=False,
+            user_id=None,
+            username=None,
+            confidence=recognition.confidence,
+            door_opened=False,
+            access_log_id=None,
+        )
+
+    door_opened = True
+    try:
+        await publish_door_unlock(door)
+    except (DoorUnlockPublishError, DoorMqttNotConfiguredError) as exc:
+        logger.warning(
+            "MQTT publish failed for door %s during recognition: %s", door.id, exc
+        )
+        door_opened = False
+
+    response = DoorRecognizeResponse(
+        matched=True,
+        user_id=recognition.user_id,
+        username=recognition.username,
+        confidence=recognition.confidence,
+        door_opened=door_opened,
+        access_log_id=None,
+    )
+    try:
+        access_log = await create_access_log(
+            AccessLogCreate(
+                door_id=door.id,
+                user_id=recognition.user_id,
+                username=recognition.username,
+                confidence=recognition.confidence,
+                door_opened=door_opened,
+            ),
+            session,
+        )
+    except Exception as exc:
+        await session.rollback()
+        logger.exception("Failed to write access log for door recognition")
+        if door_opened:
+            return response
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to record door recognition event",
+        ) from exc
 
     response.access_log_id = access_log.id
     await request.app.state.access_event_broker.publish(
