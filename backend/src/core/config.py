@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from uuid import UUID
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -27,6 +28,8 @@ class Settings(BaseSettings):
     MQTT_UNLOCK_TOPIC_TEMPLATE: str = "doors/{mqtt_id}"
     MQTT_UNLOCK_PAYLOAD: str = "1"
     MQTT_LOCK_PAYLOAD: str = "0"
+    JETSON_DEVICE_TOKEN: str | None = None
+    JETSON_DEVICE_DOOR_ID: UUID | None = None
 
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
 
