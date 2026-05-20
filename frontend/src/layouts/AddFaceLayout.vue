@@ -6,15 +6,12 @@ defineOptions({ name: 'AddFaceLayout' })
 </script>
 
 <template>
-  <Card class="max-w-3xl">
-    <div class="grid gap-5">
-      <div class="grid gap-1">
-        <RouterLink to="/faces" class="justify-self-start">
-          <Button variant="ghost" size="xs">Back</Button>
-        </RouterLink>
-        <h1 class="font-mono text-sm uppercase tracking-[0.08em] text-text-hi">Add Face</h1>
-      </div>
+  <div class="grid max-w-3xl gap-3">
+    <RouterLink to="/faces" class="justify-self-start">
+      <Button variant="ghost" size="xs">Back</Button>
+    </RouterLink>
+    <Card title="Add Face">
       <slot />
-    </div>
-  </Card>
+    </Card>
+  </div>
 </template>
