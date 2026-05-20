@@ -1,14 +1,20 @@
+import logging
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
 
+from src.access_logs.schemas import AccessLogCreate, AccessLogResponse
+from src.access_logs.service import create_access_log
 from src.auth.dependencies import require_permission
+from src.core.exceptions import DoorInactiveError, DoorMqttNotConfiguredError
 from src.core.database import SessionDep
+from src.doors.mqtt import DoorUnlockPublishError, publish_door_unlock
 from src.doors.schemas import (
     DoorCreateRequest,
     DoorListResponse,
     DoorResponse,
+    DoorUnlockResponse,
     DoorUpdateRequest,
 )
 from src.doors.service import (
@@ -22,6 +28,7 @@ from src.users.models import User
 
 
 router = APIRouter(prefix="/api/doors", tags=["doors"])
+logger = logging.getLogger(__name__)
 
 
 def _to_response(door) -> DoorResponse:
@@ -112,3 +119,58 @@ async def delete_door_endpoint(
     current_user: Annotated[User, Depends(require_permission("door:delete"))],
 ) -> None:
     await delete_door(door_id, session)
+
+
+@router.post(
+    "/{door_id}/unlock",
+    response_model=DoorUnlockResponse,
+    summary="Unlock door",
+    description="Send an MQTT unlock command and record the access event.",
+)
+async def unlock_door_endpoint(
+    door_id: Annotated[UUID, Path(description="Door ID to unlock.")],
+    request: Request,
+    session: SessionDep,
+    current_user: Annotated[User, Depends(require_permission("door:unlock"))],
+) -> DoorUnlockResponse:
+    door = await get_door_by_id(door_id, session)
+    if not door.is_active:
+        raise DoorInactiveError()
+
+    try:
+        await publish_door_unlock(door)
+    except (DoorUnlockPublishError, DoorMqttNotConfiguredError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to publish door unlock command",
+        ) from exc
+
+    response = DoorUnlockResponse(
+        door_id=door.id,
+        user_id=current_user.id,
+        username=current_user.username,
+        confidence=None,
+        door_opened=True,
+        access_log_id=None,
+    )
+    try:
+        access_log = await create_access_log(
+            AccessLogCreate(
+                door_id=door.id,
+                user_id=current_user.id,
+                username=current_user.username,
+                confidence=None,
+                door_opened=True,
+            ),
+            session,
+        )
+    except Exception:
+        await session.rollback()
+        logger.exception("Failed to write access log for manual door unlock")
+        return response
+
+    response.access_log_id = access_log.id
+    await request.app.state.access_event_broker.publish(
+        AccessLogResponse.model_validate(access_log)
+    )
+    return response

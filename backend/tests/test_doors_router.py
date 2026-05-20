@@ -3,15 +3,23 @@ from uuid import uuid4
 import pytest
 from fastapi.routing import APIRoute
 from httpx import AsyncClient
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from sqlmodel import select
-
 from src.auth.utils import create_access_token, hash_password
+from src.access_logs.models import AccessLog
 from src.doors.models import Door
 from src.permissions.models import Permission, RolePermission
 from src.roles.models import Role
 from src.users.models import User
+
+
+class _FakeAccessEventBroker:
+    def __init__(self) -> None:
+        self.events = []
+
+    async def publish(self, event) -> None:
+        self.events.append(event)
 
 
 async def _grant_role_permission(
@@ -40,7 +48,12 @@ async def _grant_role_permission(
 
 async def _create_admin_with_token(session: AsyncSession) -> tuple[User, str]:
     role = (await session.exec(select(Role).where(Role.name == "admin"))).one()
-    for permission_name in ("door:create", "door:update", "door:delete"):
+    for permission_name in (
+        "door:create",
+        "door:update",
+        "door:delete",
+        "door:unlock",
+    ):
         await _grant_role_permission(session, role, permission_name)
 
     admin = User(
@@ -78,10 +91,19 @@ async def _create_user_with_door_permission(
 
 
 async def _create_door(
-    session: AsyncSession, *, name: str | None = None, mqtt_id: str | None = None
+    session: AsyncSession,
+    *,
+    name: str | None = None,
+    mqtt_id: str | None = None,
+    has_mqtt_id: bool = True,
+    is_active: bool = True,
 ) -> Door:
     _name = name or f"door_{uuid4().hex[:12]}"
-    door = Door(name=_name, mqtt_id=mqtt_id or _name.lower().replace(" ", "-"))
+    door = Door(
+        name=_name,
+        mqtt_id=mqtt_id or (_name.lower().replace(" ", "-") if has_mqtt_id else None),
+        is_active=is_active,
+    )
     session.add(door)
     await session.commit()
     await session.refresh(door)
@@ -107,6 +129,7 @@ def test_doors_router_exposes_expected_routes() -> None:
     assert ("/api/doors/{door_id}", ("GET",)) in routes
     assert ("/api/doors/{door_id}", ("PUT",)) in routes
     assert ("/api/doors/{door_id}", ("DELETE",)) in routes
+    assert ("/api/doors/{door_id}/unlock", ("POST",)) in routes
 
 
 @pytest.mark.asyncio
@@ -303,3 +326,200 @@ async def test_delete_nonexistent_door_returns_404(
     response = await client.delete(f"/api/doors/{uuid4()}", headers=_auth(token))
 
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_unlock_door_requires_auth(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
+    door = await _create_door(database_session)
+
+    response = await client.post(f"/api/doors/{door.id}/unlock")
+
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_unlock_door_rejects_user_without_permission(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
+    user = User(
+        username=f"no_unlock_{uuid4().hex[:10]}",
+        email=f"no_unlock_{uuid4().hex[:10]}@example.com",
+        password_hash=hash_password("UserPass123!"),
+        full_name="No Unlock User",
+        role_id=seeded_roles["user"].id,
+        is_active=True,
+    )
+    database_session.add(user)
+    await database_session.commit()
+    await database_session.refresh(user)
+    door = await _create_door(database_session)
+
+    response = await client.post(
+        f"/api/doors/{door.id}/unlock",
+        headers=_auth(create_access_token(user.id)),
+    )
+
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_unlock_door_returns_404_for_missing_door(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
+    _, token = await _create_admin_with_token(database_session)
+
+    response = await client.post(f"/api/doors/{uuid4()}/unlock", headers=_auth(token))
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Door not found"
+
+
+@pytest.mark.asyncio
+async def test_unlock_door_rejects_inactive_door(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
+    _, token = await _create_admin_with_token(database_session)
+    door = await _create_door(database_session, is_active=False)
+
+    response = await client.post(f"/api/doors/{door.id}/unlock", headers=_auth(token))
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Door is inactive"
+
+
+@pytest.mark.asyncio
+async def test_unlock_door_mqtt_failure_returns_502_without_access_log(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    seeded_roles: dict[str, Role],
+) -> None:
+    from src.doors.mqtt import DoorUnlockPublishError
+    import src.doors.router as router
+
+    async def fail_publish(_door: Door) -> None:
+        raise DoorUnlockPublishError("offline")
+
+    monkeypatch.setattr(router, "publish_door_unlock", fail_publish)
+    _, token = await _create_admin_with_token(database_session)
+    door = await _create_door(database_session)
+
+    response = await client.post(f"/api/doors/{door.id}/unlock", headers=_auth(token))
+
+    logs = (
+        await database_session.exec(
+            select(AccessLog).where(AccessLog.door_id == door.id)
+        )
+    ).all()
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Failed to publish door unlock command"
+    assert list(logs) == []
+
+
+@pytest.mark.asyncio
+async def test_unlock_door_without_mqtt_id_returns_502_without_access_log(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
+    _, token = await _create_admin_with_token(database_session)
+    door = await _create_door(database_session, has_mqtt_id=False)
+
+    response = await client.post(f"/api/doors/{door.id}/unlock", headers=_auth(token))
+
+    logs = (
+        await database_session.exec(
+            select(AccessLog).where(AccessLog.door_id == door.id)
+        )
+    ).all()
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Failed to publish door unlock command"
+    assert list(logs) == []
+
+
+@pytest.mark.asyncio
+async def test_unlock_door_success_writes_access_log_and_broadcasts_event(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    seeded_roles: dict[str, Role],
+) -> None:
+    from main import app
+    import src.doors.router as router
+
+    published_doors: list[Door] = []
+
+    async def fake_publish(door: Door) -> None:
+        published_doors.append(door)
+
+    broker = _FakeAccessEventBroker()
+    monkeypatch.setattr(router, "publish_door_unlock", fake_publish)
+    monkeypatch.setattr(app.state, "access_event_broker", broker)
+    user, token = await _create_admin_with_token(database_session)
+    door = await _create_door(database_session)
+
+    response = await client.post(f"/api/doors/{door.id}/unlock", headers=_auth(token))
+
+    logs = list(
+        (
+            await database_session.exec(
+                select(AccessLog).where(AccessLog.door_id == door.id)
+            )
+        ).all()
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data == {
+        "door_id": str(door.id),
+        "user_id": str(user.id),
+        "username": user.username,
+        "confidence": None,
+        "door_opened": True,
+        "access_log_id": str(logs[0].id),
+    }
+    assert published_doors == [door]
+    assert len(logs) == 1
+    assert logs[0].user_id == user.id
+    assert logs[0].username == user.username
+    assert logs[0].confidence is None
+    assert logs[0].door_opened is True
+    assert len(broker.events) == 1
+    assert broker.events[0].id == logs[0].id
+
+
+@pytest.mark.asyncio
+async def test_unlock_door_returns_success_when_access_log_write_fails(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    seeded_roles: dict[str, Role],
+) -> None:
+    import src.doors.router as router
+
+    async def fake_publish(_door: Door) -> None:
+        return None
+
+    async def fail_create_access_log(*_args, **_kwargs) -> None:
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(router, "publish_door_unlock", fake_publish)
+    monkeypatch.setattr(router, "create_access_log", fail_create_access_log)
+    _, token = await _create_admin_with_token(database_session)
+    door = await _create_door(database_session)
+
+    response = await client.post(f"/api/doors/{door.id}/unlock", headers=_auth(token))
+
+    assert response.status_code == 200
+    assert response.json()["access_log_id"] is None
+    assert "Failed to write access log for manual door unlock" in caplog.text
