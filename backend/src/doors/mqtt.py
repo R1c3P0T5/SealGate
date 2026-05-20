@@ -9,6 +9,9 @@ from src.core.config import get_settings
 from src.core.exceptions import DoorMqttNotConfiguredError
 from src.doors.models import Door
 
+_PUBLISH_ERR_MSG = "Failed to publish door unlock command"
+_UNLOCK_PULSE_SECONDS = 0.5
+
 
 class DoorUnlockPublishError(RuntimeError):
     pass
@@ -39,6 +42,11 @@ def _disconnect_quietly(client: _Disconnectable) -> None:
         pass
 
 
+def _check_publish(rc: int) -> None:
+    if rc != mqtt.MQTT_ERR_SUCCESS:
+        raise DoorUnlockPublishError(_PUBLISH_ERR_MSG)
+
+
 def _publish_door_unlock_sync(
     door: Door,
     *,
@@ -56,24 +64,20 @@ def _publish_door_unlock_sync(
     try:
         connect_rc = mqtt_client.connect(settings.MQTT_HOST, settings.MQTT_PORT)
     except Exception as exc:
-        raise DoorUnlockPublishError("Failed to publish door unlock command") from exc
+        raise DoorUnlockPublishError(_PUBLISH_ERR_MSG) from exc
 
     if connect_rc != mqtt.MQTT_ERR_SUCCESS:
         _disconnect_quietly(mqtt_client)
-        raise DoorUnlockPublishError("Failed to publish door unlock command")
+        raise DoorUnlockPublishError(_PUBLISH_ERR_MSG)
 
     try:
-        result = mqtt_client.publish(topic, settings.MQTT_UNLOCK_PAYLOAD)
-        if result.rc != mqtt.MQTT_ERR_SUCCESS:
-            raise DoorUnlockPublishError("Failed to publish door unlock command")
-        time.sleep(0.5)
-        result = mqtt_client.publish(topic, settings.MQTT_LOCK_PAYLOAD)
-        if result.rc != mqtt.MQTT_ERR_SUCCESS:
-            raise DoorUnlockPublishError("Failed to publish door unlock command")
+        _check_publish(mqtt_client.publish(topic, settings.MQTT_UNLOCK_PAYLOAD).rc)
+        time.sleep(_UNLOCK_PULSE_SECONDS)
+        _check_publish(mqtt_client.publish(topic, settings.MQTT_LOCK_PAYLOAD).rc)
     except DoorUnlockPublishError:
-        raise
+        raise  # prevent re-wrapping by the broad except below
     except Exception as exc:
-        raise DoorUnlockPublishError("Failed to publish door unlock command") from exc
+        raise DoorUnlockPublishError(_PUBLISH_ERR_MSG) from exc
     finally:
         _disconnect_quietly(mqtt_client)
 
