@@ -159,7 +159,7 @@ async def test_push_rejects_oversized_frame(
     ) as producer_ws:
         producer_ws.send_bytes(b"0" * (max_bytes + 1))
         with pytest.raises(WebSocketDisconnect) as exc:
-            producer_ws.receive()
+            producer_ws.receive_bytes()
         assert exc.value.code == 1009
 
 

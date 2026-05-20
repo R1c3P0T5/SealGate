@@ -11,6 +11,7 @@ from src.access_events.router import router as access_events_router
 from src.access_logs.router import router as access_logs_router
 from src.auth.router import router as auth_router
 from src.auth.service import ensure_default_admin
+from src.camera.router import router as camera_router
 from src.core.config import get_settings
 from src.doors.router import router as doors_router
 from src.faces.router import router as faces_router
@@ -67,6 +68,7 @@ def create_app() -> FastAPI:
     app.include_router(access_logs_router)
     app.include_router(access_events_router)
     app.include_router(ws_tickets_router)
+    app.include_router(camera_router)
     app.include_router(roles_router)
     app.include_router(permissions_router)
 
