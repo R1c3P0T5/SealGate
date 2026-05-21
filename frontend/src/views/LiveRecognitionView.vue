@@ -4,17 +4,18 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Alert, Avatar, Badge, Button, Card, Placeholder, Select, useToast } from '@/lib'
 import type { SelectOption } from '@/lib'
 import LiveRecognitionLayout from '@/layouts/LiveRecognitionLayout.vue'
-import { listDoorsEndpointApiDoorsGet } from '@/api/sdk.gen'
+import {
+  createCameraPreviewTicketApiWsTicketsCameraPreviewPost,
+  listDoorsEndpointApiDoorsGet,
+  unlockDoorEndpointApiDoorsDoorIdUnlockPost,
+} from '@/api/sdk.gen'
 import type { AccessLogResponse, DoorResponse } from '@/api/types.gen'
 import { useAuthStore } from '@/stores/auth'
 
 defineOptions({ name: 'LiveRecognitionView' })
 
-// TODO: Door Camera and Door Control are still mock; backend needs
-//   1. /ws/camera/preview for the admin live view
-//   2. POST /api/doors/{id}/unlock endpoint
-
 type ConnectionStatus = 'connecting' | 'live' | 'offline'
+type CameraStatus = 'idle' | 'connecting' | 'live' | 'offline'
 
 const MAX_EVENTS = 20
 const VISIBLE_EVENTS = 3
@@ -31,9 +32,17 @@ const loadingDoors = ref(false)
 const unlocking = ref(false)
 const error = ref<string | null>(null)
 
+const cameraStatus = ref<CameraStatus>('idle')
+const cameraFrameUrl = ref<string | null>(null)
+
 let socket: WebSocket | null = null
 let reconnectTimer: number | null = null
 let manuallyClosed = false
+
+let cameraSocket: WebSocket | null = null
+let cameraReconnectTimer: number | null = null
+let cameraManuallyClosed = false
+let activeCameraDoorId: string | null = null
 
 const doorOptions = computed<SelectOption[]>(() =>
   doors.value
@@ -58,6 +67,34 @@ const statusBadge = computed(() => {
     case 'offline':
     default:
       return { variant: 'err' as const, label: 'Offline' }
+  }
+})
+
+const cameraBadge = computed(() => {
+  switch (cameraStatus.value) {
+    case 'live':
+      return { variant: 'ok' as const, label: 'Live' }
+    case 'connecting':
+      return { variant: 'warn' as const, label: 'Connecting…' }
+    case 'offline':
+      return { variant: 'err' as const, label: 'Offline' }
+    case 'idle':
+    default:
+      return { variant: 'dim' as const, label: 'Idle' }
+  }
+})
+
+const cameraPlaceholderLabel = computed(() => {
+  switch (cameraStatus.value) {
+    case 'connecting':
+      return 'Connecting to camera…'
+    case 'offline':
+      return 'Camera offline'
+    case 'live':
+      return ''
+    case 'idle':
+    default:
+      return loadingDoors.value ? 'Loading doors…' : 'Select a door to preview'
   }
 })
 
@@ -122,6 +159,86 @@ function disconnect() {
   socket = null
 }
 
+function releaseFrame() {
+  if (cameraFrameUrl.value) {
+    URL.revokeObjectURL(cameraFrameUrl.value)
+    cameraFrameUrl.value = null
+  }
+}
+
+function disconnectCamera() {
+  cameraManuallyClosed = true
+  if (cameraReconnectTimer !== null) window.clearTimeout(cameraReconnectTimer)
+  cameraReconnectTimer = null
+  cameraSocket?.close()
+  cameraSocket = null
+  activeCameraDoorId = null
+  releaseFrame()
+  cameraStatus.value = 'idle'
+}
+
+function scheduleCameraReconnect(doorId: string) {
+  if (cameraReconnectTimer !== null) return
+  cameraReconnectTimer = window.setTimeout(() => {
+    cameraReconnectTimer = null
+    void connectCamera(doorId)
+  }, RECONNECT_DELAY_MS)
+}
+
+async function connectCamera(doorId: string) {
+  if (!auth.token) {
+    cameraStatus.value = 'idle'
+    return
+  }
+  cameraSocket?.close()
+  cameraSocket = null
+  cameraManuallyClosed = false
+  activeCameraDoorId = doorId
+  cameraStatus.value = 'connecting'
+
+  let ticket: string
+  try {
+    const response = await createCameraPreviewTicketApiWsTicketsCameraPreviewPost({
+      body: { door_id: doorId },
+      throwOnError: true,
+    })
+    ticket = response.data.ticket
+  } catch {
+    if (activeCameraDoorId === doorId) {
+      cameraStatus.value = 'offline'
+      if (!cameraManuallyClosed) scheduleCameraReconnect(doorId)
+    }
+    return
+  }
+  if (activeCameraDoorId !== doorId) return
+
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const url = `${protocol}//${location.host}/ws/camera/${doorId}/preview?ticket=${encodeURIComponent(ticket)}`
+  const ws = new WebSocket(url)
+  ws.binaryType = 'blob'
+  cameraSocket = ws
+  ws.onmessage = (ev) => {
+    if (cameraSocket !== ws) return
+    if (!(ev.data instanceof Blob)) return
+    const previous = cameraFrameUrl.value
+    cameraFrameUrl.value = URL.createObjectURL(ev.data)
+    if (previous) URL.revokeObjectURL(previous)
+    if (cameraStatus.value !== 'live') cameraStatus.value = 'live'
+  }
+  ws.onclose = () => {
+    if (cameraSocket !== ws) return
+    cameraSocket = null
+    cameraStatus.value = 'offline'
+    if (!cameraManuallyClosed && activeCameraDoorId === doorId) {
+      scheduleCameraReconnect(doorId)
+    }
+  }
+  ws.onerror = () => {
+    if (cameraSocket !== ws) return
+    cameraStatus.value = 'offline'
+  }
+}
+
 async function loadDoors() {
   loadingDoors.value = true
   try {
@@ -136,15 +253,24 @@ async function loadDoors() {
   }
 }
 
-function unlockDoor() {
-  if (!selectedDoor.value) return
-  // TODO: wire to POST /api/doors/{door_id}/unlock once backend endpoint exists.
+async function unlockDoor() {
+  const door = selectedDoor.value
+  if (!door) return
   unlocking.value = true
   try {
+    await unlockDoorEndpointApiDoorsDoorIdUnlockPost({
+      path: { door_id: door.id },
+      throwOnError: true,
+    })
     toast.show({
-      title: `Unlock requested: ${selectedDoor.value.name}`,
-      message: 'Mock action — backend endpoint not yet implemented.',
+      title: `Unlocked ${door.name}`,
       duration: 2600,
+    })
+  } catch {
+    toast.show({
+      title: `Failed to unlock ${door.name}`,
+      message: 'Please try again or check device status.',
+      duration: 3200,
     })
   } finally {
     unlocking.value = false
@@ -155,16 +281,26 @@ watch(
   () => auth.token,
   () => {
     disconnect()
+    disconnectCamera()
     connect()
+    if (selectedDoorId.value) void connectCamera(selectedDoorId.value)
   },
 )
+
+watch(selectedDoorId, (id) => {
+  disconnectCamera()
+  if (id) void connectCamera(id)
+})
 
 onMounted(() => {
   void loadDoors()
   connect()
 })
 
-onBeforeUnmount(disconnect)
+onBeforeUnmount(() => {
+  disconnect()
+  disconnectCamera()
+})
 </script>
 
 <template>
@@ -173,17 +309,21 @@ onBeforeUnmount(disconnect)
 
     <div class="grid gap-4 md:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.65fr)]">
       <Card title="Door Camera" fit>
+        <template #action>
+          <Badge :variant="cameraBadge.variant">{{ cameraBadge.label }}</Badge>
+        </template>
         <div
-          class="grid aspect-video place-items-center rounded-[2px] border border-border bg-element"
+          class="relative grid aspect-video place-items-center overflow-hidden rounded-[2px] border border-border bg-element"
         >
-          <div class="text-center">
-            <p class="font-mono text-xs uppercase tracking-[0.08em] text-text-placeholder">
-              Mock door camera feed
-            </p>
-            <p class="mt-1 font-mono text-[10px] uppercase tracking-[0.06em] text-text-placeholder">
-              Waiting for backend pub/sub
-            </p>
-          </div>
+          <img
+            v-if="cameraFrameUrl"
+            :src="cameraFrameUrl"
+            alt="Door camera feed"
+            class="absolute inset-0 h-full w-full object-cover"
+          />
+          <p v-else class="font-mono text-xs uppercase tracking-[0.08em] text-text-placeholder">
+            {{ cameraPlaceholderLabel }}
+          </p>
         </div>
       </Card>
 
