@@ -73,20 +73,16 @@ async def seed_roles_and_permissions() -> None:
         ("user:delete", "Delete user accounts"),
         ("user:manage", "Manage user roles and permissions"),
         ("door:create", "Create doors"),
-        ("door:open", "Trigger door open"),
         ("door:read", "Read door information"),
         ("door:update", "Update doors"),
         ("door:delete", "Delete doors"),
-        ("door:lock", "Lock door"),
         ("door:unlock", "Unlock door"),
-        ("door:recognize", "Run door face recognition"),
         ("camera:preview", "Preview live camera streams"),
         ("log:read", "Read access logs"),
-        ("log:delete", "Delete access logs"),
     ]
     _ROLE_PERMISSIONS: dict[str, set[str]] = {
         "admin": {p for p, _ in _ALL_PERMISSIONS},
-        "user": {"door:open", "door:read", "log:read"},
+        "user": {"door:read"},
     }
 
     async with session_context() as session:

@@ -60,10 +60,11 @@ def _to_response(door) -> DoorResponse:
     "",
     response_model=DoorListResponse,
     summary="List doors",
-    description="Return a paginated list of all doors. No authentication required.",
+    description="Return a paginated list of all doors.",
 )
 async def list_doors_endpoint(
     session: SessionDep,
+    current_user: Annotated[User, Depends(require_permission("door:read"))],
     skip: Annotated[int, Query(ge=0, description="Doors to skip.")] = 0,
     limit: Annotated[
         int, Query(ge=1, le=100, description="Maximum doors to return.")
@@ -79,11 +80,12 @@ async def list_doors_endpoint(
     "/{door_id}",
     response_model=DoorResponse,
     summary="Get door",
-    description="Return a single door by ID. No authentication required.",
+    description="Return a single door by ID.",
 )
 async def get_door_endpoint(
     door_id: Annotated[UUID, Path(description="Door ID to fetch.")],
     session: SessionDep,
+    current_user: Annotated[User, Depends(require_permission("door:read"))],
 ) -> DoorResponse:
     door = await get_door_by_id(door_id, session)
     return _to_response(door)

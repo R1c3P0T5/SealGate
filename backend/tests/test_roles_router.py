@@ -1,34 +1,17 @@
 import pytest
-import pytest_asyncio
 from httpx import AsyncClient
-from sqlmodel import select
-from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.auth.utils import create_access_token
-from src.permissions.models import Permission, RolePermission
 from src.roles.models import Role
 from src.users.models import User
 
 
-@pytest_asyncio.fixture
-async def setup_roles(
-    database_session: AsyncSession, seeded_roles: dict[str, Role]
-) -> dict:
-    # seeded_roles already creates admin/user roles and all permissions
-    # Just link door:open to user_role so the permission endpoint test has data
-    perm = (
-        await database_session.exec(
-            select(Permission).where(Permission.name == "door:open")
-        )
-    ).one()
-    database_session.add(
-        RolePermission(role_id=seeded_roles["user"].id, permission_id=perm.id)
-    )
-    await database_session.commit()
+@pytest.fixture
+def setup_roles(seeded_roles: dict[str, Role]) -> dict:
+    # seeded_roles already gives door:read to user_role.
     return {
         "admin_role": seeded_roles["admin"],
         "user_role": seeded_roles["user"],
-        "perm": perm,
     }
 
 
@@ -86,7 +69,7 @@ async def test_get_role_permissions_returns_seeded_perms(
     )
     assert response.status_code == 200
     data = response.json()
-    assert any(p["name"] == "door:open" for p in data["permissions"])
+    assert any(p["name"] == "door:read" for p in data["permissions"])
 
 
 @pytest.mark.asyncio

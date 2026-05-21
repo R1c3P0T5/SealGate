@@ -100,14 +100,10 @@ async def seeded_roles(database_session: AsyncSession) -> dict[str, Role]:
         "user:create",
         "user:delete",
         "user:manage",
-        "door:open",
         "door:read",
-        "door:lock",
         "door:unlock",
-        "door:recognize",
         "camera:preview",
         "log:read",
-        "log:delete",
         "face:create",
         "face:read",
         "face:delete",
@@ -119,6 +115,10 @@ async def seeded_roles(database_session: AsyncSession) -> dict[str, Role]:
         database_session.add(
             RolePermission(role_id=admin_role.id, permission_id=permission.id)
         )
+        if permission.name == "door:read":
+            database_session.add(
+                RolePermission(role_id=user_role.id, permission_id=permission.id)
+            )
 
     await database_session.commit()
     await database_session.refresh(admin_role)

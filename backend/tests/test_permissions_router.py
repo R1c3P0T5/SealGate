@@ -19,7 +19,7 @@ async def full_setup(database_session: AsyncSession) -> dict:
 
     perms = [
         Permission(name=n)
-        for n in ("door:open", "door:read", "face:create", "user:read", "user:manage")
+        for n in ("door:read", "face:create", "user:read", "user:manage")
     ]
     for p in perms:
         database_session.add(p)
@@ -27,7 +27,7 @@ async def full_setup(database_session: AsyncSession) -> dict:
 
     for p in perms:
         database_session.add(RolePermission(role_id=admin_role.id, permission_id=p.id))
-    # user_role only gets door:open
+    # user_role only gets door:read
     database_session.add(
         RolePermission(role_id=user_role.id, permission_id=perms[0].id)
     )
@@ -67,7 +67,7 @@ async def test_list_permissions_returns_all(
         "/api/permissions", headers={"Authorization": f"Bearer {token}"}
     )
     assert response.status_code == 200
-    assert len(response.json()["permissions"]) == 5
+    assert len(response.json()["permissions"]) == 4
 
 
 @pytest.mark.asyncio
@@ -80,7 +80,7 @@ async def test_get_user_permissions_self(client: AsyncClient, full_setup: dict) 
     )
     assert response.status_code == 200
     data = response.json()
-    assert "door:open" in data["effective"]
+    assert "door:read" in data["effective"]
     assert "face:create" not in data["effective"]
 
 

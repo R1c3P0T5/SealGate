@@ -67,7 +67,6 @@ async def _create_admin_with_token(session: AsyncSession) -> tuple[User, str]:
         "door:update",
         "door:delete",
         "door:unlock",
-        "door:recognize",
     ):
         await _grant_role_permission(session, role, permission_name)
 
@@ -162,10 +161,23 @@ def test_doors_router_exposes_expected_routes() -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_doors_returns_empty_without_auth(
+async def test_list_doors_requires_auth(
     client: AsyncClient,
 ) -> None:
     response = await client.get("/api/doors")
+
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_list_doors_allows_user_with_door_read(
+    client: AsyncClient,
+    test_user: User,
+) -> None:
+    response = await client.get(
+        "/api/doors",
+        headers=_auth(create_access_token(test_user.id)),
+    )
 
     assert response.status_code == 200
     data = response.json()
@@ -174,13 +186,29 @@ async def test_list_doors_returns_empty_without_auth(
 
 
 @pytest.mark.asyncio
-async def test_get_door_returns_door_without_auth(
+async def test_get_door_requires_auth(
     client: AsyncClient,
     database_session: AsyncSession,
 ) -> None:
     door = await _create_door(database_session)
 
     response = await client.get(f"/api/doors/{door.id}")
+
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_get_door_allows_user_with_door_read(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    test_user: User,
+) -> None:
+    door = await _create_door(database_session)
+
+    response = await client.get(
+        f"/api/doors/{door.id}",
+        headers=_auth(create_access_token(test_user.id)),
+    )
 
     assert response.status_code == 200
     assert response.json()["id"] == str(door.id)
@@ -189,8 +217,12 @@ async def test_get_door_returns_door_without_auth(
 @pytest.mark.asyncio
 async def test_get_door_returns_404_for_missing_door(
     client: AsyncClient,
+    test_user: User,
 ) -> None:
-    response = await client.get(f"/api/doors/{uuid4()}")
+    response = await client.get(
+        f"/api/doors/{uuid4()}",
+        headers=_auth(create_access_token(test_user.id)),
+    )
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Door not found"
