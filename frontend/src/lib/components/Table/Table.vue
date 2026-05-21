@@ -16,10 +16,12 @@ const props = defineProps<{
   sortDir?: SortDir
   fit?: boolean
   equalCols?: boolean
+  clickableRows?: boolean
 }>()
 
 const emit = defineEmits<{
   sort: [key: string, dir: SortDir]
+  rowClick: [row: Record<string, unknown>, index: number]
 }>()
 
 const handleSort = (col: TableColumn) => {
@@ -60,7 +62,13 @@ const handleSort = (col: TableColumn) => {
         </tr>
       </thead>
       <tbody>
-        <tr v-for="(row, ri) in rows" :key="ri" class="group transition-colors hover:bg-overlay">
+        <tr
+          v-for="(row, ri) in rows"
+          :key="ri"
+          class="group transition-colors hover:bg-overlay"
+          :class="props.clickableRows && 'cursor-pointer'"
+          @click="props.clickableRows && emit('rowClick', row, ri)"
+        >
           <td
             v-for="col in columns"
             :key="col.key"
