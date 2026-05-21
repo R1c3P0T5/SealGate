@@ -51,6 +51,18 @@ const router = createRouter({
           component: () => import('@/views/AccessLogsView.vue'),
           meta: { adminOnly: true },
         },
+        {
+          path: 'user-management',
+          name: 'user-management',
+          component: () => import('@/views/UserManagementView.vue'),
+          meta: { adminOnly: true },
+        },
+        {
+          path: 'user-management/:userId',
+          name: 'user-management-edit',
+          component: () => import('@/views/UserEditView.vue'),
+          meta: { adminOnly: true },
+        },
         { path: 'settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },
       ],
     },

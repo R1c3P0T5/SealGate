@@ -22,6 +22,7 @@ const navItems = computed<NavItemDef[]>(() => {
   items.push({ key: 'faces', label: 'Face Management', href: '/faces' })
   if (isAdmin) {
     items.push({ key: 'access-logs', label: 'Access Logs', href: '/access-logs' })
+    items.push({ key: 'user-management', label: 'User Management', href: '/user-management' })
   }
   items.push({ key: 'settings', label: 'Settings', href: '/settings' })
   return items
