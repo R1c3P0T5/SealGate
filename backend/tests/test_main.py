@@ -105,13 +105,18 @@ async def test_lifespan_seeds_configured_default_admin(
 
 
 @pytest.mark.asyncio
-async def test_lifespan_seeds_door_recognize_for_admin_only() -> None:
+async def test_lifespan_seeds_user_with_door_read_only() -> None:
     async with lifespan(create_app()):
         assert db.async_session is not None
         async with db.async_session() as session:
-            permission = (
+            door_read = (
                 await session.exec(
-                    select(Permission).where(Permission.name == "door:recognize")
+                    select(Permission).where(Permission.name == "door:read")
+                )
+            ).one()
+            log_read = (
+                await session.exec(
+                    select(Permission).where(Permission.name == "log:read")
                 )
             ).one()
             admin_role = (
@@ -125,21 +130,49 @@ async def test_lifespan_seeds_door_recognize_for_admin_only() -> None:
                 await session.exec(
                     select(RolePermission).where(
                         RolePermission.role_id == admin_role.id,
-                        RolePermission.permission_id == permission.id,
+                        RolePermission.permission_id == door_read.id,
                     )
                 )
             ).one_or_none()
-            user_grant = (
+            user_door_read_grant = (
                 await session.exec(
                     select(RolePermission).where(
                         RolePermission.role_id == user_role.id,
-                        RolePermission.permission_id == permission.id,
+                        RolePermission.permission_id == door_read.id,
+                    )
+                )
+            ).one_or_none()
+            user_log_read_grant = (
+                await session.exec(
+                    select(RolePermission).where(
+                        RolePermission.role_id == user_role.id,
+                        RolePermission.permission_id == log_read.id,
                     )
                 )
             ).one_or_none()
 
             assert admin_grant is not None
-            assert user_grant is None
+            assert user_door_read_grant is not None
+            assert user_log_read_grant is None
+
+
+@pytest.mark.asyncio
+async def test_lifespan_does_not_seed_unused_permissions() -> None:
+    async with lifespan(create_app()):
+        assert db.async_session is not None
+        async with db.async_session() as session:
+            for permission_name in (
+                "door:open",
+                "door:lock",
+                "door:recognize",
+                "log:delete",
+            ):
+                permission = (
+                    await session.exec(
+                        select(Permission).where(Permission.name == permission_name)
+                    )
+                ).one_or_none()
+                assert permission is None
 
 
 @pytest.mark.asyncio
