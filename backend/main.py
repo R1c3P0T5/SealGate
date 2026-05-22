@@ -14,6 +14,7 @@ from src.auth.service import ensure_default_admin
 from src.camera.broker import CameraFrameBroker
 from src.camera.router import router as camera_router
 from src.core.config import get_settings
+from src.devices.router import router as devices_router
 from src.doors.router import router as doors_router
 from src.faces.router import router as faces_router
 from src.permissions.router import router as permissions_router
@@ -71,6 +72,7 @@ def create_app() -> FastAPI:
     app.include_router(access_events_router)
     app.include_router(ws_tickets_router)
     app.include_router(camera_router)
+    app.include_router(devices_router)
     app.include_router(roles_router)
     app.include_router(permissions_router)
 
