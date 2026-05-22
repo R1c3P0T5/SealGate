@@ -7,6 +7,7 @@ from sqlmodel import SQLModel
 
 from alembic import context
 from src.core.config import get_settings
+from src.devices.models import Device as _Device  # noqa: F401
 from src.doors.models import Door as _Door  # noqa: F401
 from src.faces.models import FaceVector as _FaceVector  # noqa: F401
 from src.users.models import User
