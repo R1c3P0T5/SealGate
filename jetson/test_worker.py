@@ -1,5 +1,6 @@
 import asyncio
 
+import numpy as np
 import pytest
 
 import worker
@@ -62,6 +63,84 @@ def test_load_settings_reads_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.recognize_failure_cooldown_seconds == 0.5
     assert settings.max_recognize_in_flight == 1
     assert settings.jpeg_quality == 70
+
+
+def test_primary_face_box_selects_largest_face_and_normalizes_coordinates() -> None:
+    faces = np.array(
+        [
+            [10.0, 20.0, 30.0, 40.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.75],
+            [50.0, 60.0, 100.0, 80.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.95],
+        ],
+        dtype=np.float32,
+    )
+
+    box = worker._primary_face_box_from_faces(faces, frame_width=200, frame_height=100)
+
+    assert box == {
+        "x": 0.25,
+        "y": 0.6,
+        "width": 0.5,
+        "height": 0.4,
+        "score": 0.95,
+    }
+
+
+def test_primary_face_box_clamps_to_frame_bounds() -> None:
+    faces = np.array(
+        [[-10.0, -20.0, 250.0, 160.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.8]],
+        dtype=np.float32,
+    )
+
+    box = worker._primary_face_box_from_faces(faces, frame_width=200, frame_height=100)
+
+    assert box == {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 1.0,
+        "height": 1.0,
+        "score": 0.8,
+    }
+
+
+def test_primary_face_box_returns_none_without_faces() -> None:
+    assert worker._primary_face_box_from_faces(None, frame_width=200, frame_height=100) is None
+    assert (
+        worker._primary_face_box_from_faces(
+            np.empty((0, 15), dtype=np.float32), frame_width=200, frame_height=100
+        )
+        is None
+    )
+
+
+def test_face_boxes_payload_uses_empty_faces_without_primary_box() -> None:
+    assert worker._face_boxes_payload(None) == {"type": "face_boxes", "faces": []}
+
+
+def test_drain_queue_removes_stale_metadata() -> None:
+    queue: asyncio.Queue[dict[str, object]] = asyncio.Queue()
+    queue.put_nowait({"type": "face_boxes", "faces": [{"x": 0.1}]})
+    queue.put_nowait({"type": "face_boxes", "faces": []})
+
+    worker._drain_queue(queue)
+
+    assert queue.empty()
+
+
+@pytest.mark.asyncio
+async def test_send_metadata_logs_and_returns_on_send_failure(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    class _FailingWebSocket:
+        async def send(self, _payload: str) -> None:
+            raise RuntimeError("send failed")
+
+    worker._streaming = True
+    worker._metadata_queue = asyncio.Queue()
+    worker._metadata_queue.put_nowait({"type": "face_boxes", "faces": []})
+
+    await worker._send_metadata(_FailingWebSocket())  # type: ignore[arg-type]
+
+    assert "Metadata send failed" in caplog.text
 
 
 @pytest.mark.asyncio
