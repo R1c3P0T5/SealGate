@@ -13,6 +13,7 @@ import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import cv2
 import httpx
@@ -76,6 +77,7 @@ def load_settings() -> WorkerSettings:
 
 _streaming = False
 _frame_queue: asyncio.Queue[bytes]
+_metadata_queue: asyncio.Queue[dict[str, object]]
 _recognize_semaphore: asyncio.Semaphore
 _http_client: httpx.AsyncClient
 _background_tasks: set[asyncio.Task[None]] = set()
@@ -84,16 +86,56 @@ _latest_raw_frame: np.ndarray | None = None
 _settings: WorkerSettings
 
 
+def _drain_queue(queue: asyncio.Queue[Any]) -> None:
+    while not queue.empty():
+        try:
+            queue.get_nowait()
+        except asyncio.QueueEmpty:
+            break
+
+
 def _load_detector() -> cv2.FaceDetectorYN:
     path = str(Path(_settings.detector_model).resolve())
     return cv2.FaceDetectorYN.create(path, "", (320, 240))
 
 
-def _detect_face(detector: cv2.FaceDetectorYN, frame: np.ndarray) -> bool:
+def _clamp(value: float, minimum: float, maximum: float) -> float:
+    return min(max(value, minimum), maximum)
+
+
+def _primary_face_box_from_faces(
+    faces: np.ndarray | None, *, frame_width: int, frame_height: int
+) -> dict[str, float] | None:
+    if faces is None or len(faces) == 0:
+        return None
+
+    areas = faces[:, 2] * faces[:, 3]
+    face = faces[int(np.argmax(areas))]
+    x1 = _clamp(float(face[0]), 0.0, float(frame_width))
+    y1 = _clamp(float(face[1]), 0.0, float(frame_height))
+    x2 = _clamp(float(face[0] + face[2]), 0.0, float(frame_width))
+    y2 = _clamp(float(face[1] + face[3]), 0.0, float(frame_height))
+
+    return {
+        "x": round(x1 / frame_width, 6),
+        "y": round(y1 / frame_height, 6),
+        "width": round(max(0.0, x2 - x1) / frame_width, 6),
+        "height": round(max(0.0, y2 - y1) / frame_height, 6),
+        "score": round(float(face[14]), 6),  # col 14 = confidence score (YuNet spec)
+    }
+
+
+def _face_boxes_payload(face_box: dict[str, float] | None) -> dict[str, Any]:
+    return {"type": "face_boxes", "faces": [] if face_box is None else [face_box]}
+
+
+def _detect_primary_face_box(
+    detector: cv2.FaceDetectorYN, frame: np.ndarray
+) -> dict[str, float] | None:
     h, w = frame.shape[:2]
     detector.setInputSize((w, h))
     _, faces = detector.detect(frame)
-    return faces is not None and len(faces) > 0
+    return _primary_face_box_from_faces(faces, frame_width=w, frame_height=h)
 
 
 def _encode_jpeg(frame: np.ndarray) -> bytes:
@@ -136,6 +178,18 @@ async def _post_recognize(frame_bytes: bytes) -> None:
             _next_recognize_at = max(_next_recognize_at, new_at)
 
 
+async def _send_metadata(ws: object) -> None:
+    while True:
+        payload = await _metadata_queue.get()
+        if not _streaming:
+            continue
+        try:
+            await ws.send(json.dumps(payload))  # type: ignore[attr-defined]
+        except Exception as exc:
+            logger.warning("Metadata send failed: %s", exc)
+            return
+
+
 async def ws_task() -> None:
     """維持與後端的 WS 連線。監聽 start/stop，推送影格。"""
     global _streaming
@@ -160,6 +214,7 @@ async def ws_task() -> None:
                             return
 
                 send_task = asyncio.create_task(_send_frames())
+                metadata_task = asyncio.create_task(_send_metadata(ws))
                 try:
                     async for raw_msg in ws:
                         msg = json.loads(raw_msg)
@@ -169,14 +224,12 @@ async def ws_task() -> None:
                             logger.info("Streaming started")
                         elif cmd == "stop":
                             _streaming = False
-                            while not _frame_queue.empty():
-                                try:
-                                    _frame_queue.get_nowait()
-                                except asyncio.QueueEmpty:
-                                    break
+                            _drain_queue(_frame_queue)
+                            _drain_queue(_metadata_queue)
                             logger.info("Streaming stopped")
                 finally:
                     send_task.cancel()
+                    metadata_task.cancel()
                     _streaming = False
 
         except Exception as exc:
@@ -259,28 +312,41 @@ async def detect_task() -> None:
         t0 = time.monotonic()
         frame = _latest_raw_frame
         if frame is not None:
+            face_box = await loop.run_in_executor(
+                None, _detect_primary_face_box, detector, frame
+            )
+            if _streaming:
+                payload = _face_boxes_payload(face_box)
+                if _metadata_queue.full():
+                    try:
+                        _metadata_queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        pass
+                try:
+                    _metadata_queue.put_nowait(payload)
+                except asyncio.QueueFull:
+                    pass
             can_recognize = (
                 not _recognize_semaphore.locked()
                 and time.monotonic() >= _next_recognize_at
             )
-            if can_recognize:
-                face_found = await loop.run_in_executor(None, _detect_face, detector, frame)
-                if face_found:
-                    _next_recognize_at = (
-                        time.monotonic() + _settings.recognize_min_interval_seconds
-                    )
-                    frame_bytes = await loop.run_in_executor(None, _encode_jpeg, frame)
-                    task = asyncio.create_task(_post_recognize(frame_bytes))
-                    _background_tasks.add(task)
-                    task.add_done_callback(_background_tasks.discard)
+            if can_recognize and face_box is not None:
+                _next_recognize_at = (
+                    time.monotonic() + _settings.recognize_min_interval_seconds
+                )
+                frame_bytes = await loop.run_in_executor(None, _encode_jpeg, frame)
+                task = asyncio.create_task(_post_recognize(frame_bytes))
+                _background_tasks.add(task)
+                task.add_done_callback(_background_tasks.discard)
         elapsed = time.monotonic() - t0
         await asyncio.sleep(max(0.0, detect_interval - elapsed))
 
 
 async def main() -> None:
-    global _frame_queue, _recognize_semaphore, _http_client, _settings
+    global _frame_queue, _metadata_queue, _recognize_semaphore, _http_client, _settings
     _settings = load_settings()
     _frame_queue = asyncio.Queue(maxsize=3)
+    _metadata_queue = asyncio.Queue(maxsize=3)
     _recognize_semaphore = asyncio.Semaphore(_settings.max_recognize_in_flight)
     logger.info("Starting Jetson worker for door %s", _settings.door_id)
     async with httpx.AsyncClient() as client:
