@@ -148,6 +148,109 @@ async def test_frame_relayed_from_producer_to_viewer(
 
 
 @pytest.mark.asyncio
+async def test_face_box_metadata_relayed_from_producer_to_viewer(
+    database_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await _create_door(database_session)
+    device_token = _configure_device_token(monkeypatch)
+    app = _test_app(database_session)
+    client = TestClient(app)
+    ticket = app.state.ws_ticket_store.issue(
+        purpose="camera-preview",
+        door_id=DOOR_ID,
+        ttl_seconds=30,
+    ).ticket
+    payload = {
+        "type": "face_boxes",
+        "faces": [{"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4, "score": 0.95}],
+    }
+
+    with client.websocket_connect(
+        f"/ws/camera/{DOOR_ID}/preview?ticket={ticket}"
+    ) as viewer_ws:
+        with client.websocket_connect(
+            f"/ws/camera/{DOOR_ID}/push",
+            headers={"X-Device-Token": device_token},
+        ) as producer_ws:
+            assert producer_ws.receive_json() == {"type": "start"}
+
+            producer_ws.send_json(payload)
+
+            assert viewer_ws.receive_json() == payload
+
+
+@pytest.mark.asyncio
+async def test_invalid_face_box_metadata_entry_is_dropped(
+    database_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await _create_door(database_session)
+    device_token = _configure_device_token(monkeypatch)
+    app = _test_app(database_session)
+    client = TestClient(app)
+    ticket = app.state.ws_ticket_store.issue(
+        purpose="camera-preview",
+        door_id=DOOR_ID,
+        ttl_seconds=30,
+    ).ticket
+
+    with client.websocket_connect(
+        f"/ws/camera/{DOOR_ID}/preview?ticket={ticket}"
+    ) as viewer_ws:
+        with client.websocket_connect(
+            f"/ws/camera/{DOOR_ID}/push",
+            headers={"X-Device-Token": device_token},
+        ) as producer_ws:
+            assert producer_ws.receive_json() == {"type": "start"}
+
+            producer_ws.send_json(
+                {
+                    "type": "face_boxes",
+                    "faces": [
+                        None,
+                        {"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4},
+                    ],
+                }
+            )
+
+            assert viewer_ws.receive_json() == {
+                "type": "face_boxes",
+                "faces": [{"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4}],
+            }
+
+
+@pytest.mark.asyncio
+async def test_malformed_camera_metadata_is_ignored_and_connection_stays_open(
+    database_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await _create_door(database_session)
+    device_token = _configure_device_token(monkeypatch)
+    app = _test_app(database_session)
+    client = TestClient(app)
+    ticket = app.state.ws_ticket_store.issue(
+        purpose="camera-preview",
+        door_id=DOOR_ID,
+        ttl_seconds=30,
+    ).ticket
+
+    with client.websocket_connect(
+        f"/ws/camera/{DOOR_ID}/preview?ticket={ticket}"
+    ) as viewer_ws:
+        with client.websocket_connect(
+            f"/ws/camera/{DOOR_ID}/push",
+            headers={"X-Device-Token": device_token},
+        ) as producer_ws:
+            assert producer_ws.receive_json() == {"type": "start"}
+
+            producer_ws.send_text("{bad-json")
+            producer_ws.send_bytes(b"FAKE_JPEG")
+
+            assert viewer_ws.receive_bytes() == b"FAKE_JPEG"
+
+
+@pytest.mark.asyncio
 async def test_push_rejects_oversized_frame(
     database_session: AsyncSession,
 ) -> None:

@@ -95,6 +95,25 @@ async def test_relay_frame_broadcasts_to_all_viewers() -> None:
 
 
 @pytest.mark.asyncio
+async def test_relay_metadata_broadcasts_to_all_viewers() -> None:
+    from src.camera.broker import CameraFrameBroker
+
+    broker = CameraFrameBroker()
+    v1, v2 = _FakeWS(), _FakeWS()
+    payload = {
+        "type": "face_boxes",
+        "faces": [{"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4, "score": 0.95}],
+    }
+
+    await broker.connect_viewer("door-1", v1)
+    await broker.connect_viewer("door-1", v2)
+    await broker.relay_metadata("door-1", payload)
+
+    assert v1.json_sent == [payload]
+    assert v2.json_sent == [payload]
+
+
+@pytest.mark.asyncio
 async def test_stale_producer_cannot_relay_frames_after_replacement() -> None:
     from src.camera.broker import CameraFrameBroker
 
@@ -111,6 +130,26 @@ async def test_stale_producer_cannot_relay_frames_after_replacement() -> None:
     await broker.relay_frame("door-1", b"NEW_FRAME", new_producer)
 
     assert viewer.bytes_sent == [b"NEW_FRAME"]
+
+
+@pytest.mark.asyncio
+async def test_stale_producer_cannot_relay_metadata_after_replacement() -> None:
+    from src.camera.broker import CameraFrameBroker
+
+    broker = CameraFrameBroker()
+    old_producer = _FakeWS()
+    new_producer = _FakeWS()
+    viewer = _FakeWS()
+    payload = {"type": "face_boxes", "faces": []}
+
+    await broker.connect_viewer("door-1", viewer)
+    await broker.connect_producer("door-1", old_producer)
+    await broker.connect_producer("door-1", new_producer)
+
+    await broker.relay_metadata("door-1", payload, old_producer)
+    await broker.relay_metadata("door-1", payload, new_producer)
+
+    assert viewer.json_sent == [payload]
 
 
 @pytest.mark.asyncio
