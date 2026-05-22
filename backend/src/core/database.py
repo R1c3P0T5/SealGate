@@ -79,6 +79,7 @@ async def seed_roles_and_permissions() -> None:
         ("door:unlock", "Unlock door"),
         ("camera:preview", "Preview live camera streams"),
         ("log:read", "Read access logs"),
+        ("device:manage", "Manage camera devices"),
     ]
     _ROLE_PERMISSIONS: dict[str, set[str]] = {
         "admin": {p for p, _ in _ALL_PERMISSIONS},

@@ -69,6 +69,8 @@ def test_openapi_docs_include_operation_and_schema_descriptions() -> None:
         ("/api/users/{user_id}", "put"): "Update user profile",
         ("/api/users/{user_id}", "delete"): "Delete user",
         ("/api/access-logs", "get"): "List access logs",
+        ("/api/devices", "get"): "List devices",
+        ("/api/devices", "post"): "Create device",
         ("/api/doors/{door_id}/unlock", "post"): "Unlock door",
         ("/api/doors/{door_id}/recognize", "post"): "Recognize door access",
     }
@@ -183,6 +185,44 @@ async def test_lifespan_seeds_camera_preview_for_admin_only() -> None:
             permission = (
                 await session.exec(
                     select(Permission).where(Permission.name == "camera:preview")
+                )
+            ).one()
+            admin_role = (
+                await session.exec(select(Role).where(Role.name == "admin"))
+            ).one()
+            user_role = (
+                await session.exec(select(Role).where(Role.name == "user"))
+            ).one()
+
+            admin_grant = (
+                await session.exec(
+                    select(RolePermission).where(
+                        RolePermission.role_id == admin_role.id,
+                        RolePermission.permission_id == permission.id,
+                    )
+                )
+            ).one_or_none()
+            user_grant = (
+                await session.exec(
+                    select(RolePermission).where(
+                        RolePermission.role_id == user_role.id,
+                        RolePermission.permission_id == permission.id,
+                    )
+                )
+            ).one_or_none()
+
+            assert admin_grant is not None
+            assert user_grant is None
+
+
+@pytest.mark.asyncio
+async def test_lifespan_seeds_device_manage_for_admin_only() -> None:
+    async with lifespan(create_app()):
+        assert db.async_session is not None
+        async with db.async_session() as session:
+            permission = (
+                await session.exec(
+                    select(Permission).where(Permission.name == "device:manage")
                 )
             ).one()
             admin_role = (
