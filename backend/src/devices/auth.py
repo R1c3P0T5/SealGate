@@ -1,16 +1,12 @@
-import logging
-import secrets
 from uuid import UUID
 
 from fastapi import Request, WebSocket
 
-from src.core.config import get_settings
 from src.core.database import SessionDep
 from src.core.exceptions import DoorNotFoundError
+from src.devices.service import get_device_by_token_hash, hash_device_token
 from src.doors.models import Door
 from src.doors.service import get_door_by_id
-
-logger = logging.getLogger(__name__)
 
 
 class DeviceAuthError(Exception):
@@ -25,22 +21,19 @@ def _device_token(scope: Request | WebSocket) -> str | None:
     return scope.headers.get("x-device-token")
 
 
-async def get_configured_device_door(
+async def get_device_door(
     scope: Request | WebSocket,
     door_id: UUID,
     session: SessionDep,
 ) -> Door:
-    settings = get_settings()
-    if not settings.JETSON_DEVICE_TOKEN or settings.JETSON_DEVICE_DOOR_ID is None:
-        logger.warning("Jetson device token is not configured")
-        raise DeviceAuthError()
-    if door_id != settings.JETSON_DEVICE_DOOR_ID:
-        raise DeviceAuthError()
-
     token = _device_token(scope)
     if token is None:
         raise DeviceAuthError()
-    if not secrets.compare_digest(token, settings.JETSON_DEVICE_TOKEN):
+
+    device = await get_device_by_token_hash(hash_device_token(token), session)
+    if device is None or not device.is_active:
+        raise DeviceAuthError()
+    if device.door_id != door_id:
         raise DeviceAuthError()
 
     try:
@@ -50,15 +43,3 @@ async def get_configured_device_door(
     if not door.is_active:
         raise DeviceDoorInactiveError()
     return door
-
-
-async def is_configured_device_for_door(
-    scope: Request | WebSocket,
-    door_id: UUID,
-    session: SessionDep,
-) -> bool:
-    try:
-        await get_configured_device_door(scope, door_id, session)
-    except DeviceAuthError:
-        return False
-    return True
