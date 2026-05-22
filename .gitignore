@@ -18,3 +18,4 @@ __pycache__/
 # OpenAPI codegen
 openapi.json
 frontend/src/api/
+
