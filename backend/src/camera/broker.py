@@ -58,6 +58,24 @@ class CameraFrameBroker:
         for ws in stale:
             await self.disconnect_viewer(door_id, ws)
 
+    async def relay_metadata(
+        self,
+        door_id: str,
+        payload: dict[str, object],
+        producer: _BytesWebSocket | None = None,
+    ) -> None:
+        if producer is not None and self._producers.get(door_id) is not producer:
+            return
+        viewers = self._viewers.get(door_id, set())
+        stale: list[_BytesWebSocket] = []
+        for ws in list(viewers):
+            try:
+                await ws.send_json(payload)
+            except (RuntimeError, WebSocketDisconnect):
+                stale.append(ws)
+        for ws in stale:
+            await self.disconnect_viewer(door_id, ws)
+
     async def _signal(self, door_id: str, cmd: str) -> None:
         producer = self._producers.get(door_id)
         if producer is None:
