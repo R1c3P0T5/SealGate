@@ -4,12 +4,13 @@ import pytest
 from starlette.requests import Request
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.core.config import get_settings
 from src.devices.auth import (
+    DeviceAuthError,
     DeviceDoorInactiveError,
-    get_configured_device_door,
-    is_configured_device_for_door,
+    get_device_door,
 )
+from src.devices.models import Device
+from src.devices.service import hash_device_token
 from src.doors.models import Door
 
 
@@ -33,81 +34,103 @@ async def _create_door(session: AsyncSession, *, active: bool = True) -> Door:
 
 
 @pytest.mark.asyncio
-async def test_configured_device_auth_accepts_matching_token_and_door(
+async def test_device_auth_accepts_matching_token_and_door(
     database_session: AsyncSession,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     door = await _create_door(database_session)
-    monkeypatch.setenv("JETSON_DEVICE_TOKEN", "device-token")
-    monkeypatch.setenv("JETSON_DEVICE_DOOR_ID", str(door.id))
-    get_settings.cache_clear()
-
-    assert await is_configured_device_for_door(
-        _request("device-token"), door.id, database_session
-    )
-    assert (
-        await get_configured_device_door(
-            _request("device-token"), door.id, database_session
+    database_session.add(
+        Device(
+            name="front-door-device",
+            door_id=door.id,
+            token_hash=hash_device_token("device-token"),
         )
+    )
+    await database_session.commit()
+
+    assert (
+        await get_device_door(_request("device-token"), door.id, database_session)
     ).id == door.id
 
 
 @pytest.mark.asyncio
-async def test_configured_device_auth_rejects_missing_server_config(
+async def test_device_auth_rejects_missing_token(
     database_session: AsyncSession,
 ) -> None:
     door = await _create_door(database_session)
 
-    assert not await is_configured_device_for_door(
-        _request("device-token"), door.id, database_session
-    )
+    with pytest.raises(DeviceAuthError):
+        await get_device_door(_request(), door.id, database_session)
 
 
 @pytest.mark.asyncio
-async def test_configured_device_auth_rejects_wrong_token(
+async def test_device_auth_rejects_wrong_token(
     database_session: AsyncSession,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     door = await _create_door(database_session)
-    monkeypatch.setenv("JETSON_DEVICE_TOKEN", "device-token")
-    monkeypatch.setenv("JETSON_DEVICE_DOOR_ID", str(door.id))
-    get_settings.cache_clear()
-
-    assert not await is_configured_device_for_door(
-        _request("wrong-token"), door.id, database_session
+    database_session.add(
+        Device(
+            name="front-door-device",
+            door_id=door.id,
+            token_hash=hash_device_token("device-token"),
+        )
     )
+    await database_session.commit()
+
+    with pytest.raises(DeviceAuthError):
+        await get_device_door(_request("wrong-token"), door.id, database_session)
 
 
 @pytest.mark.asyncio
-async def test_configured_device_auth_rejects_wrong_door(
+async def test_device_auth_rejects_wrong_door(
     database_session: AsyncSession,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     configured_door = await _create_door(database_session)
     other_door = await _create_door(database_session)
-    monkeypatch.setenv("JETSON_DEVICE_TOKEN", "device-token")
-    monkeypatch.setenv("JETSON_DEVICE_DOOR_ID", str(configured_door.id))
-    get_settings.cache_clear()
-
-    assert not await is_configured_device_for_door(
-        _request("device-token"), other_door.id, database_session
+    database_session.add(
+        Device(
+            name="front-door-device",
+            door_id=configured_door.id,
+            token_hash=hash_device_token("device-token"),
+        )
     )
+    await database_session.commit()
+
+    with pytest.raises(DeviceAuthError):
+        await get_device_door(_request("device-token"), other_door.id, database_session)
 
 
 @pytest.mark.asyncio
-async def test_configured_device_auth_distinguishes_inactive_door(
+async def test_device_auth_rejects_inactive_device(
     database_session: AsyncSession,
-    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    door = await _create_door(database_session)
+    database_session.add(
+        Device(
+            name="front-door-device",
+            door_id=door.id,
+            token_hash=hash_device_token("device-token"),
+            is_active=False,
+        )
+    )
+    await database_session.commit()
+
+    with pytest.raises(DeviceAuthError):
+        await get_device_door(_request("device-token"), door.id, database_session)
+
+
+@pytest.mark.asyncio
+async def test_device_auth_distinguishes_inactive_door(
+    database_session: AsyncSession,
 ) -> None:
     door = await _create_door(database_session, active=False)
-    monkeypatch.setenv("JETSON_DEVICE_TOKEN", "device-token")
-    monkeypatch.setenv("JETSON_DEVICE_DOOR_ID", str(door.id))
-    get_settings.cache_clear()
+    database_session.add(
+        Device(
+            name="front-door-device",
+            door_id=door.id,
+            token_hash=hash_device_token("device-token"),
+        )
+    )
+    await database_session.commit()
 
     with pytest.raises(DeviceDoorInactiveError):
-        await get_configured_device_door(
-            _request("device-token"), door.id, database_session
-        )
-    assert not await is_configured_device_for_door(
-        _request("device-token"), door.id, database_session
-    )
+        await get_device_door(_request("device-token"), door.id, database_session)

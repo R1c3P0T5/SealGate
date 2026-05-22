@@ -11,6 +11,8 @@ from main import create_app
 from src.camera.broker import CameraFrameBroker
 from src.core.config import get_settings
 from src.core.database import get_session
+from src.devices.models import Device
+from src.devices.service import hash_device_token
 from src.doors.models import Door
 from src.ws_tickets.store import WebSocketTicketStore
 
@@ -62,11 +64,16 @@ async def _create_door(session: AsyncSession, *, active: bool = True) -> Door:
     return door
 
 
-def _configure_device_token(monkeypatch: pytest.MonkeyPatch) -> str:
+async def _create_device_token(session: AsyncSession, door: Door) -> str:
     token = "test-device-token"
-    monkeypatch.setenv("JETSON_DEVICE_TOKEN", token)
-    monkeypatch.setenv("JETSON_DEVICE_DOOR_ID", DOOR_ID)
-    get_settings.cache_clear()
+    session.add(
+        Device(
+            name=f"device-{door.id}",
+            door_id=door.id,
+            token_hash=hash_device_token(token),
+        )
+    )
+    await session.commit()
     return token
 
 
@@ -87,10 +94,9 @@ async def test_preview_rejects_missing_token(database_session: AsyncSession) -> 
 @pytest.mark.asyncio
 async def test_push_rejects_wrong_device_token(
     database_session: AsyncSession,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    await _create_door(database_session)
-    _configure_device_token(monkeypatch)
+    door = await _create_door(database_session)
+    await _create_device_token(database_session, door)
     client = TestClient(_test_app(database_session))
     assert (
         _ws_close_code(
@@ -114,10 +120,9 @@ async def test_preview_rejects_wrong_ticket(
 @pytest.mark.asyncio
 async def test_frame_relayed_from_producer_to_viewer(
     database_session: AsyncSession,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    await _create_door(database_session)
-    device_token = _configure_device_token(monkeypatch)
+    door = await _create_door(database_session)
+    device_token = await _create_device_token(database_session, door)
     app = _test_app(database_session)
     client = TestClient(app)
     ticket = app.state.ws_ticket_store.issue(
@@ -145,10 +150,9 @@ async def test_frame_relayed_from_producer_to_viewer(
 @pytest.mark.asyncio
 async def test_push_rejects_oversized_frame(
     database_session: AsyncSession,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    await _create_door(database_session)
-    device_token = _configure_device_token(monkeypatch)
+    door = await _create_door(database_session)
+    device_token = await _create_device_token(database_session, door)
     app = _test_app(database_session)
     client = TestClient(app)
     max_bytes = get_settings().CAMERA_PREVIEW_MAX_FRAME_BYTES
@@ -166,10 +170,9 @@ async def test_push_rejects_oversized_frame(
 @pytest.mark.asyncio
 async def test_push_rejects_inactive_door(
     database_session: AsyncSession,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    await _create_door(database_session, active=False)
-    device_token = _configure_device_token(monkeypatch)
+    door = await _create_door(database_session, active=False)
+    device_token = await _create_device_token(database_session, door)
     client = TestClient(_test_app(database_session))
     close = _ws_close(
         client,

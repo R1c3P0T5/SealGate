@@ -19,7 +19,7 @@ from src.auth.dependencies import require_permission
 from src.core.config import get_settings
 from src.core.database import SessionDep
 from src.core.exceptions import DoorInactiveError, DoorMqttNotConfiguredError
-from src.devices.auth import DeviceAuthError, get_configured_device_door
+from src.devices.auth import DeviceAuthError, get_device_door
 from src.doors.mqtt import DoorUnlockPublishError, publish_door_unlock
 from src.doors.schemas import (
     DoorCreateRequest,
@@ -211,7 +211,7 @@ async def recognize_door_endpoint(
             detail="Missing device token",
         )
     try:
-        door = await get_configured_device_door(request, door_id, session)
+        door = await get_device_door(request, door_id, session)
     except DeviceAuthError as exc:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

@@ -11,7 +11,7 @@ from src.core.database import SessionDep
 from src.core.exceptions import DoorNotFoundError
 from src.devices.auth import (
     DeviceAuthError,
-    get_configured_device_door,
+    get_device_door,
 )
 from src.doors.service import get_door_by_id
 from src.ws_tickets.store import WebSocketTicketStore
@@ -28,7 +28,7 @@ async def camera_push_endpoint(
 ) -> None:
     """Jetson producer：送出 binary JPEG 影格，接收 start/stop 控制。"""
     try:
-        await get_configured_device_door(websocket, door_id, session)
+        await get_device_door(websocket, door_id, session)
     except DeviceAuthError as exc:
         await websocket.accept()
         await websocket.close(code=1008, reason=exc.detail)
