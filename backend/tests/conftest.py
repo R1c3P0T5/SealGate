@@ -32,7 +32,16 @@ def isolate_test_settings(
     tmp_path: Path,
 ) -> Generator[None, None, None]:
     test_database_url = f"sqlite+aiosqlite:///{tmp_path}/test_jetson_facelock.db"
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SECRET_KEY", "a" * 32)
     monkeypatch.setenv("DATABASE_URL", test_database_url)
+    for name in (
+        "DEFAULT_ADMIN_USERNAME",
+        "DEFAULT_ADMIN_PASSWORD",
+        "DEFAULT_ADMIN_FULL_NAME",
+        "DEFAULT_ADMIN_EMAIL",
+    ):
+        monkeypatch.delenv(name, raising=False)
     get_settings.cache_clear()
     try:
         yield
