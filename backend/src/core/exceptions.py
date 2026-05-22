@@ -99,3 +99,18 @@ class DoorInactiveError(BaseAPIError):
 class DoorMqttNotConfiguredError(BaseAPIError):
     status_code = 409
     detail = "Door MQTT ID is not configured"
+
+
+class DeviceNotFoundError(BaseAPIError):
+    status_code = 404
+    detail = "Device not found"
+
+
+class DeviceNameAlreadyExistsError(BaseAPIError):
+    status_code = 400
+    detail = "Device name already in use"
+
+
+class DeviceTokenCollisionError(BaseAPIError):
+    status_code = 500
+    detail = "Could not generate a unique device token"
