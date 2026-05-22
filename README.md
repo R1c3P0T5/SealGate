@@ -87,6 +87,7 @@ Use the subproject READMEs when working inside one runtime target:
 
 - [backend/README.md](./backend/README.md) - FastAPI app structure, local backend setup, migrations, tests, API docs, and backend troubleshooting.
 - [frontend/README.md](./frontend/README.md) - Vue app structure, Vite proxy behavior, generated API client usage, component stories, tests, linting, and frontend troubleshooting.
+- [jetson/README.md](./jetson/README.md) - Jetson worker setup, environment configuration, model download, and camera troubleshooting.
 
 The shortest local path is:
 

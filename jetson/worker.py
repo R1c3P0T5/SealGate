@@ -24,7 +24,6 @@ from dotenv import load_dotenv
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-
 @dataclass(frozen=True)
 class WorkerSettings:
     backend_url: str
@@ -40,7 +39,7 @@ class WorkerSettings:
     recognize_failure_cooldown_seconds: float = 0.5
     max_recognize_in_flight: int = 1
     camera_fail_retry: int = 30
-    detector_model: str = "models/yunet.onnx"
+    detector_model: str = "models/face_detection_yunet_2023mar.onnx"
 
 
 def _required_env(name: str) -> str:
@@ -72,7 +71,7 @@ def load_settings() -> WorkerSettings:
         ),
         max_recognize_in_flight=int(os.getenv("MAX_RECOGNIZE_IN_FLIGHT", "1")),
         camera_fail_retry=int(os.getenv("CAMERA_FAIL_RETRY", "30")),
-        detector_model=os.getenv("FACE_DETECTOR_MODEL", "models/yunet.onnx"),
+        detector_model=os.getenv("FACE_DETECTOR_MODEL", "models/face_detection_yunet_2023mar.onnx"),
     )
 
 _streaming = False
@@ -95,7 +94,8 @@ def _drain_queue(queue: asyncio.Queue[Any]) -> None:
 
 
 def _load_detector() -> cv2.FaceDetectorYN:
-    path = str(Path(_settings.detector_model).resolve())
+    model = Path(_settings.detector_model)
+    path = str(model if model.is_absolute() else Path(__file__).parent / model)
     return cv2.FaceDetectorYN.create(path, "", (320, 240))
 
 
@@ -162,7 +162,6 @@ async def _post_recognize(frame_bytes: bytes) -> None:
             )
             r.raise_for_status()
             result = r.json()
-            cooldown = _settings.recognize_failure_cooldown_seconds
             if result.get("matched"):
                 cooldown = _settings.recognize_success_cooldown_seconds
                 logger.info(
