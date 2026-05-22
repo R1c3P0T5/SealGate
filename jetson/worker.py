@@ -244,7 +244,11 @@ async def capture_task() -> None:
     loop = asyncio.get_running_loop()
 
     def _open_camera() -> cv2.VideoCapture:
-        cap = cv2.VideoCapture(_settings.camera_index)
+        cap = cv2.VideoCapture(_settings.camera_index, cv2.CAP_V4L2)
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         if not cap.isOpened():
             raise RuntimeError(f"Cannot open camera index {_settings.camera_index}")
         logger.info("Camera opened (index=%d)", _settings.camera_index)
