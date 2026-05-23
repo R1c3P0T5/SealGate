@@ -16,10 +16,14 @@ defineOptions({ name: 'LiveRecognitionView' })
 
 type ConnectionStatus = 'connecting' | 'live' | 'offline'
 type CameraStatus = 'idle' | 'connecting' | 'live' | 'offline'
+type FaceBox = { x: number; y: number; width: number; height: number; score?: number }
 
 const MAX_EVENTS = 20
 const VISIBLE_EVENTS = 3
 const RECONNECT_DELAY_MS = 3000
+const MATCH_HIGHLIGHT_MS = 2000
+const FACE_BOX_MATCH_COLOR = '#a4d5b5'
+const FACE_BOX_DEFAULT_COLOR = '#e0a8a8'
 
 const toast = useToast()
 const auth = useAuthStore()
@@ -34,10 +38,13 @@ const error = ref<string | null>(null)
 
 const cameraStatus = ref<CameraStatus>('idle')
 const cameraFrameUrl = ref<string | null>(null)
+const faceBoxes = ref<FaceBox[]>([])
+const matchActive = ref(false)
 
 let socket: WebSocket | null = null
 let reconnectTimer: number | null = null
 let manuallyClosed = false
+let matchHighlightTimer: number | null = null
 
 let cameraSocket: WebSocket | null = null
 let cameraReconnectTimer: number | null = null
@@ -130,6 +137,7 @@ function connect() {
     try {
       const data = JSON.parse(msg.data) as AccessLogResponse
       events.value = [data, ...events.value].slice(0, MAX_EVENTS)
+      if (data.door_id === selectedDoorId.value && data.confidence != null) flashMatch()
     } catch {
       // ignore malformed payload
     }
@@ -159,6 +167,21 @@ function disconnect() {
   socket = null
 }
 
+function flashMatch() {
+  matchActive.value = true
+  if (matchHighlightTimer !== null) window.clearTimeout(matchHighlightTimer)
+  matchHighlightTimer = window.setTimeout(() => {
+    matchActive.value = false
+    matchHighlightTimer = null
+  }, MATCH_HIGHLIGHT_MS)
+}
+
+function clearMatchHighlight() {
+  if (matchHighlightTimer !== null) window.clearTimeout(matchHighlightTimer)
+  matchHighlightTimer = null
+  matchActive.value = false
+}
+
 function releaseFrame() {
   if (cameraFrameUrl.value) {
     URL.revokeObjectURL(cameraFrameUrl.value)
@@ -174,6 +197,8 @@ function disconnectCamera() {
   cameraSocket = null
   activeCameraDoorId = null
   releaseFrame()
+  faceBoxes.value = []
+  clearMatchHighlight()
   cameraStatus.value = 'idle'
 }
 
@@ -219,6 +244,17 @@ async function connectCamera(doorId: string) {
   cameraSocket = ws
   ws.onmessage = (ev) => {
     if (cameraSocket !== ws) return
+    if (typeof ev.data === 'string') {
+      try {
+        const payload = JSON.parse(ev.data) as { type?: string; faces?: FaceBox[] }
+        if (payload.type === 'face_boxes' && Array.isArray(payload.faces)) {
+          faceBoxes.value = payload.faces
+        }
+      } catch {
+        // ignore malformed metadata
+      }
+      return
+    }
     if (!(ev.data instanceof Blob)) return
     const previous = cameraFrameUrl.value
     cameraFrameUrl.value = URL.createObjectURL(ev.data)
@@ -321,7 +357,31 @@ onBeforeUnmount(() => {
             alt="Door camera feed"
             class="absolute inset-0 h-full w-full object-cover"
           />
-          <p v-else class="font-mono text-xs uppercase tracking-[0.08em] text-text-placeholder">
+          <svg
+            v-if="cameraFrameUrl && faceBoxes.length"
+            class="pointer-events-none absolute inset-0 h-full w-full opacity-50"
+            :style="{ color: matchActive ? FACE_BOX_MATCH_COLOR : FACE_BOX_DEFAULT_COLOR }"
+            viewBox="0 0 1 1"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+          >
+            <rect
+              v-for="(box, index) in faceBoxes"
+              :key="index"
+              :x="box.x"
+              :y="box.y"
+              :width="box.width"
+              :height="box.height"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              vector-effect="non-scaling-stroke"
+            />
+          </svg>
+          <p
+            v-if="!cameraFrameUrl"
+            class="font-mono text-xs uppercase tracking-[0.08em] text-text-placeholder"
+          >
             {{ cameraPlaceholderLabel }}
           </p>
         </div>
@@ -337,7 +397,7 @@ onBeforeUnmount(() => {
             <li
               v-for="event in visibleEvents"
               :key="event.id"
-              class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 border-b border-border-soft pb-2 last:border-b-0 last:pb-0"
+              class="event-row grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-[2px] border-b border-border-soft px-1 pb-2 last:border-b-0 last:pb-0"
             >
               <Avatar
                 :initials="initials(event.username)"
@@ -397,3 +457,22 @@ onBeforeUnmount(() => {
     </div>
   </LiveRecognitionLayout>
 </template>
+
+<style scoped>
+.event-row {
+  animation: event-flash 2s ease-out;
+}
+@keyframes event-flash {
+  from {
+    background-color: rgba(99, 174, 128, 0.35);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .event-row {
+    animation: none;
+  }
+}
+</style>
