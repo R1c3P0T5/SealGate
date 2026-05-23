@@ -150,10 +150,9 @@ async def test_frame_relayed_from_producer_to_viewer(
 @pytest.mark.asyncio
 async def test_face_box_metadata_relayed_from_producer_to_viewer(
     database_session: AsyncSession,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    await _create_door(database_session)
-    device_token = _configure_device_token(monkeypatch)
+    door = await _create_door(database_session)
+    device_token = await _create_device_token(database_session, door)
     app = _test_app(database_session)
     client = TestClient(app)
     ticket = app.state.ws_ticket_store.issue(
@@ -183,10 +182,9 @@ async def test_face_box_metadata_relayed_from_producer_to_viewer(
 @pytest.mark.asyncio
 async def test_invalid_face_box_metadata_entry_is_dropped(
     database_session: AsyncSession,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    await _create_door(database_session)
-    device_token = _configure_device_token(monkeypatch)
+    door = await _create_door(database_session)
+    device_token = await _create_device_token(database_session, door)
     app = _test_app(database_session)
     client = TestClient(app)
     ticket = app.state.ws_ticket_store.issue(
@@ -223,10 +221,9 @@ async def test_invalid_face_box_metadata_entry_is_dropped(
 @pytest.mark.asyncio
 async def test_malformed_camera_metadata_is_ignored_and_connection_stays_open(
     database_session: AsyncSession,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    await _create_door(database_session)
-    device_token = _configure_device_token(monkeypatch)
+    door = await _create_door(database_session)
+    device_token = await _create_device_token(database_session, door)
     app = _test_app(database_session)
     client = TestClient(app)
     ticket = app.state.ws_ticket_store.issue(
