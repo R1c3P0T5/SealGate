@@ -27,7 +27,7 @@ async def test_database_init_creates_engine_and_sessionmaker() -> None:
 
     assert isinstance(db.engine, AsyncEngine)
     assert str(db.engine.url) == get_settings().DATABASE_URL
-    assert "test_jetson_facelock.db" in str(db.engine.url)
+    assert "test_sealgate.db" in str(db.engine.url)
     assert db.async_session is not None
     assert db.async_session.kw["expire_on_commit"] is False
 

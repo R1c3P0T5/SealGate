@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     """Application configuration from environment variables."""
 
     SECRET_KEY: str = ""
-    DATABASE_URL: str = "sqlite+aiosqlite:///./jetson_facelock.db"
+    DATABASE_URL: str = "sqlite+aiosqlite:///./sealgate.db"
     DEBUG: bool = False
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRATION_HOURS: int = 24

@@ -9,7 +9,7 @@ Copy `backend/.env.example` to `backend/.env` and fill in the required values.
 | Variable | Required | Default | Description |
 | -------- | -------- | ------- | ----------- |
 | `SECRET_KEY` | **yes** | — | JWT signing key, minimum 32 characters. Generate with `openssl rand -hex 32`. |
-| `DATABASE_URL` | no | `sqlite+aiosqlite:///./jetson_facelock.db` | SQLAlchemy async database URL. |
+| `DATABASE_URL` | no | `sqlite+aiosqlite:///./sealgate.db` | SQLAlchemy async database URL. |
 | `DEBUG` | no | `False` | Enable FastAPI debug mode and auto-reload. |
 | `JWT_ALGORITHM` | no | `HS256` | JWT signing algorithm. |
 | `JWT_EXPIRATION_HOURS` | no | `24` | Access token lifetime in hours. |

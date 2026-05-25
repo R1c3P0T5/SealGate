@@ -1,4 +1,4 @@
-# Jetson Facelock Worker
+# SealGate Worker
 
 Async Python worker that runs on the Jetson device (or any Linux machine with a
 camera). It captures frames, detects faces locally with YuNet, and forwards

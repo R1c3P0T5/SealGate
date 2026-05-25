@@ -1,6 +1,6 @@
-# Jetson Facelock Frontend
+# SealGate Frontend
 
-Vue 3 dashboard for Jetson Facelock administration.
+Vue 3 dashboard for SealGate administration.
 
 The frontend provides login, dashboard, face records, settings, access-log
 views, and shared UI components. It consumes a generated TypeScript client from

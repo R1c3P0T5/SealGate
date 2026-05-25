@@ -1,8 +1,8 @@
-# Jetson Facelock Backend
+# SealGate Backend
 
 FastAPI service handling user authentication, admin user management,
 image-based face verification, audit logging, and MQTT door-control publishing
-for the Jetson Facelock system.
+for the SealGate system.
 
 The backend receives face images, extracts face embeddings internally, matches
 them against stored user face vectors, writes an audit log entry, and publishes
