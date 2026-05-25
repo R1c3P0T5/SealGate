@@ -32,6 +32,7 @@ const navItems = computed<NavItemDef[]>(() => {
 const activeKey = computed(() => {
   const name = String(route.name ?? '')
   if (name === 'faces-new') return 'faces'
+  if (name === 'doors-new') return 'doors'
   return name
 })
 
