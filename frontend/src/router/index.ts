@@ -64,6 +64,12 @@ const router = createRouter({
           meta: { adminOnly: true },
         },
         {
+          path: 'doors/:doorId',
+          name: 'doors-edit',
+          component: () => import('@/views/DoorEditView.vue'),
+          meta: { adminOnly: true },
+        },
+        {
           path: 'user-management',
           name: 'user-management',
           component: () => import('@/views/UserManagementView.vue'),
