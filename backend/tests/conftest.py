@@ -32,7 +32,7 @@ def isolate_test_settings(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> Generator[None, None, None]:
-    test_database_url = f"sqlite+aiosqlite:///{tmp_path}/test_jetson_facelock.db"
+    test_database_url = f"sqlite+aiosqlite:///{tmp_path}/test_sealgate.db"
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("SECRET_KEY", "a" * 32)
     monkeypatch.setenv("DATABASE_URL", test_database_url)

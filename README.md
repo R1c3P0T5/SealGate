@@ -1,6 +1,6 @@
 <div align="center">
 
-# Jetson Facelock
+# SealGate
 
 [![Stars]][Stars-url]
 [![CI]][CI-url]
@@ -10,7 +10,7 @@
 
 </div>
 
-Jetson Facelock is a contributor-oriented face-recognition access control system for an NVIDIA Jetson device, a FastAPI service, a Vue 3 dashboard, and Raspberry Pi Pico W firmware. The project explores the full path from face enrollment and authentication to role-based administration and lock-controller integration.
+SealGate is a face recognition and hand-gesture access control system — named after the concept of hand seals (結印) as authentication and gate as the controlled entry point. It spans an NVIDIA Jetson device, a FastAPI service, a Vue 3 dashboard, and Raspberry Pi Pico W firmware.
 
 This repository is intended for collaborators building the system, improving the recognition pipeline, extending the API, and maintaining the hardware-facing firmware. It is not packaged as a turnkey consumer door-lock product.
 
@@ -69,7 +69,7 @@ The backend owns authentication, user records, role checks, image-based face ver
 ## Repository Layout
 
 ```text
-jetson_facelock/
+sealgate/
 ├── backend/       # FastAPI app, domain modules, Alembic migrations, pytest suite
 ├── frontend/      # Vue 3 app, component library, generated API client, Vitest tests
 ├── firmware/      # Raspberry Pi Pico W firmware built with CMake and Pico SDK
@@ -133,21 +133,21 @@ This project touches physical access control concepts. Treat hardware control, a
 
 ## Star History
 
-<a href="https://www.star-history.com/?repos=R1c3P0T5%2Fjetson_facelock&type=date&legend=bottom-right">
+<a href="https://www.star-history.com/?repos=R1c3P0T5%2Fsealgate&type=date&legend=bottom-right">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=R1c3P0T5/jetson_facelock&type=date&theme=dark&legend=bottom-right" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=R1c3P0T5/jetson_facelock&type=date&legend=bottom-right" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=R1c3P0T5/jetson_facelock&type=date&legend=bottom-right" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=R1c3P0T5/sealgate&type=date&theme=dark&legend=bottom-right" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=R1c3P0T5/sealgate&type=date&legend=bottom-right" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=R1c3P0T5/sealgate&type=date&legend=bottom-right" />
  </picture>
 </a>
 
-[Stars]: https://img.shields.io/github/stars/R1c3P0T5/jetson_facelock?color=fafafa&logo=github&logoColor=fff&style=for-the-badge
-[Stars-url]: https://github.com/R1c3P0T5/jetson_facelock/stargazers
-[CI]: https://img.shields.io/github/actions/workflow/status/R1c3P0T5/jetson_facelock/pre-commit.yml?label=ci&style=for-the-badge&logo=githubactions&logoColor=fff
-[CI-url]: https://github.com/R1c3P0T5/jetson_facelock/actions/workflows/pre-commit.yml
+[Stars]: https://img.shields.io/github/stars/R1c3P0T5/sealgate?color=fafafa&logo=github&logoColor=fff&style=for-the-badge
+[Stars-url]: https://github.com/R1c3P0T5/sealgate/stargazers
+[CI]: https://img.shields.io/github/actions/workflow/status/R1c3P0T5/sealgate/pre-commit.yml?label=ci&style=for-the-badge&logo=githubactions&logoColor=fff
+[CI-url]: https://github.com/R1c3P0T5/sealgate/actions/workflows/pre-commit.yml
 [Python]: https://img.shields.io/badge/python-3.10+-3776ab?style=for-the-badge&logo=python&logoColor=fff
 [Python-url]: https://www.python.org/
 [Node]: https://img.shields.io/badge/node-20+-5fa04e?style=for-the-badge&logo=nodedotjs&logoColor=fff
 [Node-url]: https://nodejs.org/
-[Last Commit]: https://img.shields.io/github/last-commit/R1c3P0T5/jetson_facelock?style=for-the-badge&logo=git&logoColor=fff
-[Last-Commit-url]: https://github.com/R1c3P0T5/jetson_facelock/commits/main
+[Last Commit]: https://img.shields.io/github/last-commit/R1c3P0T5/sealgate?style=for-the-badge&logo=git&logoColor=fff
+[Last-Commit-url]: https://github.com/R1c3P0T5/sealgate/commits/main

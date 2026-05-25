@@ -44,8 +44,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="Jetson Facelock API",
-        description="Backend API for Jetson Facelock user authentication and access control.",
+        title="SealGate API",
+        description="Backend API for SealGate user authentication and access control.",
         version="0.1.0",
         lifespan=lifespan,
     )

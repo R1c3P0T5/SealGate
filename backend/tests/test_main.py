@@ -13,7 +13,7 @@ from src.users.models import User
 def test_create_app_returns_configured_fastapi_app() -> None:
     created_app = create_app()
 
-    assert created_app.title == "Jetson Facelock API"
+    assert created_app.title == "SealGate API"
     assert created_app.version == "0.1.0"
 
 
