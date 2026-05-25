@@ -58,6 +58,12 @@ const router = createRouter({
           meta: { adminOnly: true },
         },
         {
+          path: 'doors/new',
+          name: 'doors-new',
+          component: () => import('@/views/DoorCreateView.vue'),
+          meta: { adminOnly: true },
+        },
+        {
           path: 'user-management',
           name: 'user-management',
           component: () => import('@/views/UserManagementView.vue'),
