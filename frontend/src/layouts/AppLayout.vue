@@ -32,7 +32,7 @@ const navItems = computed<NavItemDef[]>(() => {
 const activeKey = computed(() => {
   const name = String(route.name ?? '')
   if (name === 'faces-new') return 'faces'
-  if (name === 'doors-new') return 'doors'
+  if (name === 'doors-new' || name === 'doors-edit') return 'doors'
   return name
 })
 
