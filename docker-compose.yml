@@ -1,7 +1,7 @@
 services:
   backend:
     build: ./backend
-    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-local}/sealgate-backend:latest
+    image: ghcr.io/r1c3p0t5/sealgate-backend:latest
     profiles: [server, full]
     ports:
       - "8000:8000"
@@ -18,7 +18,7 @@ services:
 
   frontend:
     build: ./frontend
-    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-local}/sealgate-frontend:latest
+    image: ghcr.io/r1c3p0t5/sealgate-frontend:latest
     profiles: [server, full]
     ports:
       - "80:80"
@@ -29,7 +29,7 @@ services:
 
   worker:
     build: ./jetson
-    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-local}/sealgate-worker:latest
+    image: ghcr.io/r1c3p0t5/sealgate-worker:latest
     profiles: [worker, full]
     devices:
       - /dev/video0:/dev/video0
