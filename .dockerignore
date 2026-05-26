@@ -1,0 +1,21 @@
+.git
+.gitignore
+.github
+.vscode
+
+# Python
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/.venv
+**/*.pyc
+
+# Node
+**/node_modules
+frontend/dist
+
+# Dev artifacts
+.worktrees
+*.md
+docker-compose.override.yml
+Makefile
