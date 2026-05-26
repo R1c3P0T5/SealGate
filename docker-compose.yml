@@ -27,6 +27,14 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: [server, full]
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - frontend
+    restart: unless-stopped
+
   worker:
     build: ./jetson
     image: ghcr.io/r1c3p0t5/sealgate-worker:latest
