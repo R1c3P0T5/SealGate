@@ -6,7 +6,7 @@ RUN pnpm install --frozen-lockfile
 COPY frontend/ ./
 # openapi.json lives at repo root; vite-plugin resolves it as ../openapi.json from /app
 COPY openapi.json /openapi.json
-RUN pnpm build
+RUN pnpm generate:api && pnpm build
 
 FROM nginx:alpine
 COPY --from=build /app/dist /usr/share/nginx/html
