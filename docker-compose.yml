@@ -1,0 +1,40 @@
+services:
+  backend:
+    build: ./backend
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-local}/sealgate-backend:latest
+    profiles: [server, full]
+    ports:
+      - "8000:8000"
+    volumes:
+      - sqlite-data:/app/data
+    env_file: ./backend/.env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  frontend:
+    build: ./frontend
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-local}/sealgate-frontend:latest
+    profiles: [server, full]
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build: ./jetson
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-local}/sealgate-worker:latest
+    profiles: [worker, full]
+    devices:
+      - /dev/video0:/dev/video0
+    env_file: ./jetson/.env
+    restart: unless-stopped
+
+volumes:
+  sqlite-data:
