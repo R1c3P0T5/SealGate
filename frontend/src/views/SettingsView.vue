@@ -96,33 +96,39 @@ function reset() {
       </Button>
     </template>
 
-    <div class="grid gap-3">
+    <div class="grid gap-4">
       <Alert v-if="generalError" variant="err">{{ generalError }}</Alert>
 
-      <Input
-        :model-value="auth.user?.username ?? ''"
-        placeholder="Username"
-        autocomplete="username"
-        disabled
-        hint="Username cannot be changed."
-      />
-      <Input
-        v-model="form.full_name"
-        placeholder="Full name"
-        autocomplete="name"
-        :invalid="!!errors.full_name"
-        :error="errors.full_name"
-        :disabled="saving"
-      />
-      <Input
-        v-model="form.email"
-        type="email"
-        placeholder="Email"
-        autocomplete="email"
-        :invalid="!!errors.email"
-        :error="errors.email"
-        :disabled="saving"
-      />
+      <div class="grid gap-1.5">
+        <label class="font-mono text-xs text-text-placeholder">Username</label>
+        <Input
+          :model-value="auth.user?.username ?? ''"
+          autocomplete="username"
+          disabled
+          hint="Username cannot be changed."
+        />
+      </div>
+      <div class="grid gap-1.5">
+        <label class="font-mono text-xs text-text-placeholder">Full name</label>
+        <Input
+          v-model="form.full_name"
+          autocomplete="name"
+          :invalid="!!errors.full_name"
+          :error="errors.full_name"
+          :disabled="saving"
+        />
+      </div>
+      <div class="grid gap-1.5">
+        <label class="font-mono text-xs text-text-placeholder">Email</label>
+        <Input
+          v-model="form.email"
+          type="email"
+          autocomplete="email"
+          :invalid="!!errors.email"
+          :error="errors.email"
+          :disabled="saving"
+        />
+      </div>
     </div>
   </SettingsLayout>
 </template>
