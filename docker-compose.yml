@@ -31,7 +31,7 @@ services:
     image: cloudflare/cloudflared:latest
     profiles: [server, full]
     command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
-    dns: 127.0.0.11
+    network_mode: host
     depends_on:
       - frontend
     restart: unless-stopped
