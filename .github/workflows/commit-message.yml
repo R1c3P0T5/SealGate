@@ -45,7 +45,7 @@ jobs:
           if [ "$range" = "${{ github.sha }}" ]; then
             commits='${{ github.sha }}'
           else
-            commits=$(git rev-list --reverse "$range")
+            commits=$(git rev-list --reverse --no-merges "$range")
           fi
 
           for sha in $commits; do
