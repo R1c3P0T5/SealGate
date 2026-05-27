@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { Alert, Button, Card, Input } from '@/lib'
 import { useAuthStore } from '@/stores/auth'
@@ -13,6 +13,21 @@ const username = ref('')
 const password = ref('')
 const loading = ref(false)
 const errorMsg = ref<string | null>(null)
+
+onMounted(() => {
+  const state = window.history.state as {
+    prefillUsername?: string
+    prefillPassword?: string
+  } | null
+  if (state?.prefillUsername) username.value = String(state.prefillUsername)
+  if (state?.prefillPassword) password.value = String(state.prefillPassword)
+  if (state && ('prefillUsername' in state || 'prefillPassword' in state)) {
+    const cleaned = { ...state } as Record<string, unknown>
+    delete cleaned.prefillUsername
+    delete cleaned.prefillPassword
+    window.history.replaceState(cleaned, '')
+  }
+})
 
 async function submit() {
   errorMsg.value = null
