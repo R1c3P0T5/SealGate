@@ -104,7 +104,7 @@ onUnmounted(() => {
         autoplay
         playsinline
         muted
-        class="aspect-video w-full bg-element object-cover"
+        class="aspect-video w-full -scale-x-100 bg-element object-cover"
         @loadedmetadata="emitReady"
         @playing="emitReady"
       />
