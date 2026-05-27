@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
-import { RouterLink, useRoute } from 'vue-router'
+import { computed, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 
-import { Alert, Button, Card, RadioGroup, Skeleton, useToast } from '@/lib'
+import { Alert, Button, Skeleton, useToast } from '@/lib'
+import UserEditLayout from '@/layouts/UserEditLayout.vue'
+import PermissionsEditor from '@/components/PermissionsEditor.vue'
 import {
   getUserApiUsersUserIdGet,
   listPermissionsApiPermissionsGet,
   listRolesApiRolesGet,
-  rolePermissionsApiRolesRoleIdPermissionsGet,
   setPermissionsApiUsersUserIdPermissionsPut,
   setRoleApiUsersUserIdRolePut,
   userPermissionsApiUsersUserIdPermissionsGet,
@@ -34,35 +35,10 @@ const loading = ref(false)
 const loadError = ref<string | null>(null)
 const saving = ref(false)
 
-const rolePermissions = ref<string[]>([])
 const initialRoleId = ref<string | null>(null)
 const draftRoleId = ref<string | null>(null)
 const initialOverrides = ref<PermissionOverride[]>([])
 const draftOverrides = ref<PermissionOverride[]>([])
-
-const roleOptions = computed(() =>
-  roles.value.map((r) => ({
-    value: r.id,
-    label: r.name,
-    description: r.description ?? undefined,
-  })),
-)
-
-const groupedPermissions = computed(() => {
-  const groups = new Map<string, PermissionResponse[]>()
-  for (const perm of permissions.value) {
-    const scope = perm.name.split(':')[0] ?? 'other'
-    const list = groups.get(scope) ?? []
-    list.push(perm)
-    groups.set(scope, list)
-  }
-  return Array.from(groups.entries()).map(([scope, items]) => ({ scope, items }))
-})
-
-function actionOf(perm: string): string {
-  const idx = perm.indexOf(':')
-  return idx === -1 ? perm : perm.slice(idx + 1)
-}
 
 function errorMessage(value: unknown, fallback: string) {
   if (value && typeof value === 'object' && 'detail' in value) {
@@ -89,7 +65,6 @@ async function loadAll() {
     user.value = userRes.data as UserResponseFull
     roles.value = rolesRes.data.roles
     permissions.value = permsRes.data.permissions
-    rolePermissions.value = permsForUserRes.data.role_permissions
     initialOverrides.value = permsForUserRes.data.overrides.map((o) => ({ ...o }))
     draftOverrides.value = permsForUserRes.data.overrides.map((o) => ({ ...o }))
 
@@ -102,46 +77,6 @@ async function loadAll() {
     loading.value = false
   }
 }
-
-const rolePermsCache = new Map<string, string[]>()
-
-async function fetchRolePermissions(roleId: string): Promise<string[]> {
-  const cached = rolePermsCache.get(roleId)
-  if (cached) return cached
-  const res = await rolePermissionsApiRolesRoleIdPermissionsGet({
-    path: { role_id: roleId },
-    throwOnError: true,
-  })
-  const names = res.data.permissions.map((p) => p.name)
-  rolePermsCache.set(roleId, names)
-  return names
-}
-
-watch(draftRoleId, async (newId, oldId) => {
-  if (!newId || newId === oldId) return
-  try {
-    rolePermissions.value = await fetchRolePermissions(newId)
-  } catch (err) {
-    toast.show({ title: errorMessage(err, 'Could not load role permissions.') })
-  }
-})
-
-function isEffective(perm: string): boolean {
-  const o = draftOverrides.value.find((x) => x.permission === perm)
-  if (o) return o.granted
-  return rolePermissions.value.includes(perm)
-}
-
-function setEffective(perm: string, value: boolean) {
-  const roleHas = rolePermissions.value.includes(perm)
-  const next = draftOverrides.value.filter((x) => x.permission !== perm)
-  if (value !== roleHas) {
-    next.push({ permission: perm, granted: value })
-  }
-  draftOverrides.value = next
-}
-
-const hasDraftOverrides = computed(() => draftOverrides.value.length > 0)
 
 const roleChanged = computed(() => draftRoleId.value !== initialRoleId.value)
 const overridesChanged = computed(() => {
@@ -189,119 +124,37 @@ function reset() {
   draftOverrides.value = initialOverrides.value.map((o) => ({ ...o }))
 }
 
-function restoreDefaults() {
-  draftOverrides.value = []
-}
-
 onMounted(loadAll)
 </script>
 
 <template>
-  <div class="grid gap-4">
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <div class="flex items-center gap-3">
-        <RouterLink to="/user-management">
-          <Button variant="ghost" size="sm">← Back</Button>
-        </RouterLink>
-        <h1 class="font-mono text-sm text-text-hi">
-          {{ user?.username ?? '—' }}
-        </h1>
-      </div>
-      <div v-if="user" class="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          :disabled="!hasDraftOverrides || saving"
-          @click="restoreDefaults"
-        >
-          Restore defaults
-        </Button>
+  <UserEditLayout>
+    <template #title>{{ user?.username ?? '—' }}</template>
+    <template #actions>
+      <template v-if="user">
         <Button variant="ghost" size="sm" :disabled="!dirty || saving" @click="reset">
           Reset
         </Button>
         <Button variant="primary" size="sm" :loading="saving" :disabled="!dirty" @click="save">
           Save
         </Button>
-      </div>
-    </div>
+      </template>
+    </template>
 
     <Alert v-if="loadError" variant="err">{{ loadError }}</Alert>
 
-    <Card v-if="loading" class="self-start">
-      <div class="grid gap-3">
-        <Skeleton :height="32" />
-        <Skeleton :height="180" />
-      </div>
-    </Card>
+    <div v-if="loading" class="grid gap-3">
+      <Skeleton :height="32" />
+      <Skeleton :height="180" />
+    </div>
 
-    <Card v-else-if="user" class="self-start">
-      <div class="grid gap-5">
-        <section class="grid gap-2">
-          <h2 class="font-mono text-[11px] uppercase tracking-[0.1em] text-text-placeholder">
-            Role
-          </h2>
-          <RadioGroup
-            v-if="draftRoleId !== null"
-            v-model="draftRoleId"
-            :options="roleOptions"
-            orientation="horizontal"
-          />
-        </section>
-
-        <section class="grid gap-4">
-          <h2 class="font-mono text-[11px] uppercase tracking-[0.1em] text-text-placeholder">
-            Permissions
-          </h2>
-
-          <div v-for="group in groupedPermissions" :key="group.scope" class="grid gap-2">
-            <span class="font-mono text-[11px] uppercase tracking-[0.1em] text-text-placeholder">
-              {{ group.scope }}
-            </span>
-            <div class="grid gap-1 overflow-hidden rounded-[2px] border border-border">
-              <div
-                v-for="perm in group.items"
-                :key="perm.name"
-                class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border-soft px-3 py-2 last:border-b-0"
-              >
-                <div class="min-w-0">
-                  <p class="truncate font-mono text-sm text-text-hi">{{ actionOf(perm.name) }}</p>
-                  <p v-if="perm.description" class="truncate text-xs text-text-placeholder">
-                    {{ perm.description }}
-                  </p>
-                </div>
-                <div
-                  class="flex items-center justify-self-end overflow-hidden rounded-[2px] border border-border"
-                >
-                  <button
-                    type="button"
-                    class="min-w-9 px-2 py-1 font-mono text-xs transition-colors"
-                    :class="
-                      isEffective(perm.name)
-                        ? 'bg-ok/20 text-ok'
-                        : 'bg-bg text-text-placeholder hover:text-ok'
-                    "
-                    @click="setEffective(perm.name, true)"
-                  >
-                    ✓
-                  </button>
-                  <button
-                    type="button"
-                    class="min-w-9 border-l border-border px-2 py-1 font-mono text-xs transition-colors"
-                    :class="
-                      !isEffective(perm.name)
-                        ? 'bg-err/20 text-err'
-                        : 'bg-bg text-text-placeholder hover:text-err'
-                    "
-                    @click="setEffective(perm.name, false)"
-                  >
-                    ✗
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
-    </Card>
-  </div>
+    <PermissionsEditor
+      v-else-if="user"
+      v-model:role-id="draftRoleId"
+      v-model:overrides="draftOverrides"
+      :roles="roles"
+      :permissions="permissions"
+      :disabled="saving"
+    />
+  </UserEditLayout>
 </template>

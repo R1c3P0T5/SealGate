@@ -2,14 +2,19 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { Alert, Badge, Card, Skeleton, State, Table } from '@/lib'
+import { Alert, Badge, Button, Card, Skeleton, State, Table } from '@/lib'
 import type { TableColumn } from '@/lib'
+import UserManagementLayout from '@/layouts/UserManagementLayout.vue'
 import { listUsersEndpointApiUsersGet } from '@/api/sdk.gen'
 import type { UserResponseFull } from '@/api/types.gen'
+import { useAuthStore } from '@/stores/auth'
 
 defineOptions({ name: 'UserManagementView' })
 
 const router = useRouter()
+const auth = useAuthStore()
+
+const isAdmin = computed(() => auth.user?.role_name === 'admin')
 
 const users = ref<UserResponseFull[]>([])
 const loading = ref(false)
@@ -18,10 +23,10 @@ const error = ref<string | null>(null)
 const columns: TableColumn[] = [
   { key: 'username', label: 'Username' },
   { key: 'full_name', label: 'Full Name' },
-  { key: 'email', label: 'Email' },
+  { key: 'email', label: 'Email', hideBelow: 'md' },
   { key: 'role', label: 'Role' },
   { key: 'active', label: 'Active' },
-  { key: 'created', label: 'Created' },
+  { key: 'created', label: 'Created', hideBelow: 'md' },
 ]
 
 function pad(n: number) {
@@ -74,12 +79,18 @@ function open(userId: string) {
   void router.push({ name: 'user-management-edit', params: { userId } })
 }
 
+function newUser() {
+  void router.push({ name: 'user-management-new' })
+}
+
 onMounted(loadUsers)
 </script>
 
 <template>
-  <div class="grid gap-4">
-    <h1 class="font-mono text-sm uppercase tracking-[0.08em] text-text-hi">User Management</h1>
+  <UserManagementLayout>
+    <template #actions>
+      <Button v-if="isAdmin" variant="primary" size="sm" @click="newUser">+ New user</Button>
+    </template>
 
     <Alert v-if="error" variant="err">{{ error }}</Alert>
 
@@ -112,5 +123,5 @@ onMounted(loadUsers)
         </template>
       </Table>
     </Card>
-  </div>
+  </UserManagementLayout>
 </template>
