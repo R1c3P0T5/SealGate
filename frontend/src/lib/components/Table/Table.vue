@@ -6,6 +6,7 @@ export interface TableColumn {
   label: string
   sortable?: boolean
   hideBelow?: 'sm' | 'md' | 'lg' | 'xl'
+  class?: string
 }
 
 export type SortDir = 'asc' | 'desc'
@@ -55,7 +56,7 @@ const handleSort = (col: TableColumn) => {
             v-for="col in columns"
             :key="col.key"
             class="border-b border-border py-2.5 text-left font-mono text-[11px] uppercase tracking-[0.1em] whitespace-nowrap text-text-placeholder"
-            :class="[props.fit ? 'px-4' : 'px-2', hideClass(col)]"
+            :class="[props.fit ? 'px-4' : 'px-2', hideClass(col), col.class]"
           >
             <button
               v-if="col.sortable"
@@ -85,7 +86,7 @@ const handleSort = (col: TableColumn) => {
             v-for="col in columns"
             :key="col.key"
             class="border-b border-border-soft py-2.5 text-sm tabular-nums text-text-lo group-last:border-b-0"
-            :class="[props.fit ? 'px-4' : 'px-2', hideClass(col)]"
+            :class="[props.fit ? 'px-4' : 'px-2', hideClass(col), col.class]"
           >
             <slot :name="`cell-${col.key}`" :row="row" :value="row[col.key]">
               {{ row[col.key] }}

@@ -61,14 +61,12 @@ function exitSelectMode() {
   selected.value = new Set()
 }
 
-const columns = computed<TableColumn[]>(() => {
-  const base: TableColumn[] = [
-    { key: 'id', label: 'ID' },
-    { key: 'size', label: 'Size' },
-    { key: 'created', label: 'Created' },
-  ]
-  return selectMode.value ? [{ key: 'select', label: '' }, ...base] : base
-})
+const columns: TableColumn[] = [
+  { key: 'select', label: '', class: 'w-12' },
+  { key: 'id', label: 'ID' },
+  { key: 'size', label: 'Size' },
+  { key: 'created', label: 'Created' },
+]
 
 const rows = computed<Record<string, unknown>[]>(() =>
   props.faces.map((face) => {
@@ -119,10 +117,13 @@ const rows = computed<Record<string, unknown>[]>(() =>
       </div>
       <Table :columns="columns" :rows="rows" equal-cols>
         <template #cell-select="{ row }">
-          <Checkbox
-            :model-value="selected.has(String(row.faceId))"
-            @update:model-value="toggleOne(String(row.faceId))"
-          />
+          <span :class="!selectMode && 'invisible'" :aria-hidden="!selectMode || undefined">
+            <Checkbox
+              :model-value="selected.has(String(row.faceId))"
+              :tabindex="selectMode ? undefined : -1"
+              @update:model-value="toggleOne(String(row.faceId))"
+            />
+          </span>
         </template>
         <template #cell-size="{ row }">
           <span class="whitespace-nowrap">{{ row.size }}</span>
