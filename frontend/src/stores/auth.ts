@@ -40,6 +40,11 @@ export const useAuthStore = defineStore('auth', () => {
     _syncClient()
   }
 
+  function setUser(updated: UserResponse) {
+    user.value = updated
+    _persist()
+  }
+
   function restore() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY)
@@ -54,5 +59,5 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  return { token, user, isAuthenticated, login, logout, restore }
+  return { token, user, isAuthenticated, login, logout, setUser, restore }
 })
