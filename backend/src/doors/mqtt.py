@@ -1,3 +1,4 @@
+import ssl
 import time
 from typing import Protocol
 
@@ -26,6 +27,8 @@ class _Disconnectable(Protocol):
 
 
 class _MqttClient(Protocol):
+    def tls_set(self, tls_version: int | None = None) -> None: ...
+
     def username_pw_set(self, username: str, password: str | None = None) -> None: ...
 
     def connect(self, host: str, port: int) -> int: ...
@@ -57,6 +60,8 @@ def _publish_door_unlock_sync(
 
     settings = get_settings()
     mqtt_client = client or mqtt.Client(CallbackAPIVersion.VERSION2)
+    if settings.MQTT_TLS:
+        mqtt_client.tls_set(tls_version=ssl.PROTOCOL_TLS_CLIENT)
     if settings.MQTT_USERNAME is not None:
         mqtt_client.username_pw_set(settings.MQTT_USERNAME, settings.MQTT_PASSWORD)
 

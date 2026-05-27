@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     COSINE_THRESHOLD: float = 0.363
     MQTT_HOST: str = "localhost"
     MQTT_PORT: int = 1883
+    MQTT_TLS: bool = False
     MQTT_USERNAME: str | None = None
     MQTT_PASSWORD: str | None = None
     MQTT_UNLOCK_TOPIC_TEMPLATE: str = "doors/{mqtt_id}"

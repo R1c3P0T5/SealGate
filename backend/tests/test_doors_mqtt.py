@@ -25,6 +25,9 @@ class _FakeMqttClient:
         self.published = []
         self.disconnected = False
 
+    def tls_set(self, tls_version: int | None = None) -> None:
+        pass
+
     def username_pw_set(self, username: str, password: str | None = None) -> None:
         self.username = username
         self.password = password
