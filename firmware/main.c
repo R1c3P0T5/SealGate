@@ -17,14 +17,6 @@
 // ── Credentials (gitignored) ──────────────────────────────────────────────────
 #include "secrets.h"
 
-// ── HiveMQ Cloud ──────────────────────────────────────────────────────────────
-#define HIVEMQ_PORT      8883
-#define MQTT_CLIENT_ID   "pico2w"
-
-// ── Topics ────────────────────────────────────────────────────────────────────
-#define MQTT_PUB_TOPIC   "pico/status"
-#define MQTT_SUB_TOPIC   "DOOR"
-
 // ── Door actuator pin ─────────────────────────────────────────────────────────
 #define DOOR_PIN         15
 
@@ -128,11 +120,11 @@ static void do_mqtt_connect(void) {
         .tls_config  = tls_config,
     };
 
-    DBG("connecting to %s:%d", ipaddr_ntoa(&broker_ip), HIVEMQ_PORT);
+    DBG("connecting to %s:%d", ipaddr_ntoa(&broker_ip), MQTT_PORT);
     cyw43_arch_lwip_begin();
     active_sni_tls_config = tls_config;
     active_sni_hostname = MQTT_HOST;
-    err_t err = mqtt_client_connect(client, &broker_ip, HIVEMQ_PORT,
+    err_t err = mqtt_client_connect(client, &broker_ip, MQTT_PORT,
                                     connection_cb, NULL, &ci);
     active_sni_hostname = NULL;
     active_sni_tls_config = NULL;
