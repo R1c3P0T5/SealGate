@@ -116,6 +116,16 @@ async function copyToken() {
   }
 }
 
+async function copyDoorId() {
+  if (!created.value) return
+  try {
+    await navigator.clipboard.writeText(created.value.door_id)
+    toast.show({ title: 'Door ID copied' })
+  } catch {
+    toast.show({ title: 'Copy failed; select and copy manually.' })
+  }
+}
+
 function done() {
   void router.push({ name: 'doors' })
 }
@@ -129,8 +139,9 @@ function cancel() {
   <DoorCreateLayout>
     <div v-if="created" class="grid gap-3">
       <Alert variant="warn">
-        Copy this device token now — it will not be shown again. Paste it into the Jetson
+        Copy the device token now — it will not be shown again. Paste both values into the Jetson
         <code class="font-mono text-text-hi">.env</code> as
+        <code class="font-mono text-text-hi">DOOR_ID</code> and
         <code class="font-mono text-text-hi">DEVICE_TOKEN</code>.
       </Alert>
       <div class="grid gap-2">
@@ -138,6 +149,20 @@ function cancel() {
           Door <span class="text-text-lo">{{ form.name }}</span> · Device
           <span class="text-text-lo">{{ created.name }}</span>
         </span>
+        <label class="font-mono text-[11px] uppercase tracking-[0.1em] text-text-placeholder">
+          DOOR_ID
+        </label>
+        <div class="flex items-center gap-2">
+          <code
+            class="grow break-all rounded-[2px] border border-border bg-element px-3 py-2 font-mono text-sm text-text-hi"
+          >
+            {{ created.door_id }}
+          </code>
+          <Button variant="ghost" size="sm" @click="copyDoorId">Copy</Button>
+        </div>
+        <label class="font-mono text-[11px] uppercase tracking-[0.1em] text-text-placeholder">
+          DEVICE_TOKEN
+        </label>
         <div class="flex items-center gap-2">
           <code
             class="grow break-all rounded-[2px] border border-border bg-element px-3 py-2 font-mono text-sm text-text-hi"
