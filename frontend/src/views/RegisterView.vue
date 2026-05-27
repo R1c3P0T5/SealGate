@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
 import { Alert, Button, Card, Input } from '@/lib'
 import { registerApiAuthRegisterPost } from '@/api/sdk.gen'
 
 defineOptions({ name: 'RegisterView' })
+
+const router = useRouter()
 
 type FormState = {
   username: string
@@ -61,8 +63,13 @@ async function submit() {
       },
       throwOnError: true,
     })
-    form.value = { username: '', full_name: '', email: '', password: '', confirm: '' }
-    errors.value = {}
+    await router.push({
+      name: 'login',
+      state: {
+        prefillUsername: form.value.username,
+        prefillPassword: form.value.password,
+      },
+    })
   } catch {
     generalError.value = 'Registration failed. Please check your details and try again.'
   } finally {
