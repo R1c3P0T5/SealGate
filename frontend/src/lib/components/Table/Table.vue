@@ -5,9 +5,21 @@ export interface TableColumn {
   key: string
   label: string
   sortable?: boolean
+  hideBelow?: 'sm' | 'md' | 'lg' | 'xl'
 }
 
 export type SortDir = 'asc' | 'desc'
+
+const HIDE_BELOW_CLASS: Record<NonNullable<TableColumn['hideBelow']>, string> = {
+  sm: 'hidden sm:table-cell',
+  md: 'hidden md:table-cell',
+  lg: 'hidden lg:table-cell',
+  xl: 'hidden xl:table-cell',
+}
+
+function hideClass(col: TableColumn) {
+  return col.hideBelow ? HIDE_BELOW_CLASS[col.hideBelow] : ''
+}
 
 const props = defineProps<{
   columns: TableColumn[]
@@ -43,7 +55,7 @@ const handleSort = (col: TableColumn) => {
             v-for="col in columns"
             :key="col.key"
             class="border-b border-border py-2.5 text-left font-mono text-[11px] uppercase tracking-[0.1em] whitespace-nowrap text-text-placeholder"
-            :class="props.fit ? 'px-4' : 'px-2'"
+            :class="[props.fit ? 'px-4' : 'px-2', hideClass(col)]"
           >
             <button
               v-if="col.sortable"
@@ -73,7 +85,7 @@ const handleSort = (col: TableColumn) => {
             v-for="col in columns"
             :key="col.key"
             class="border-b border-border-soft py-2.5 text-sm tabular-nums text-text-lo group-last:border-b-0"
-            :class="props.fit ? 'px-4' : 'px-2'"
+            :class="[props.fit ? 'px-4' : 'px-2', hideClass(col)]"
           >
             <slot :name="`cell-${col.key}`" :row="row" :value="row[col.key]">
               {{ row[col.key] }}
