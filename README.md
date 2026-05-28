@@ -117,7 +117,12 @@ pnpm dev
 
 Run focused checks while developing, then run `uvx pre-commit run --all-files` before review.
 
-For Docker-based development and deployment, see the Compose profiles and Makefile shortcuts in [DEVELOPMENT.md](./DEVELOPMENT.md).
+For Docker-based development and deployment, use the root `Makefile` as the
+entry point. Local development targets use the Compose override file for hot
+reload, while production targets use the base Compose file and recreate
+containers when environment files change. See
+[DEVELOPMENT.md](./DEVELOPMENT.md#docker-compose-profiles) for the full profile
+and command guide.
 
 ## Contributing
 
