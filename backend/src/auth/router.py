@@ -26,9 +26,9 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
     status_code=201,
     summary="Register user",
     description=(
-        "Create a new active user account. Usernames must be unique, passwords "
-        "must meet the configured strength policy, and emails are optional but "
-        "must be unique when provided."
+        "Create a new user account pending admin activation. Usernames must be "
+        "unique, passwords must meet the configured strength policy, and emails "
+        "are optional but must be unique when provided."
     ),
     response_description="The created user without password hash or face embedding data.",
 )

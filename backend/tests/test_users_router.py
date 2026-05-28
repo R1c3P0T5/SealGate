@@ -46,6 +46,7 @@ def test_users_router_exposes_expected_routes() -> None:
     assert ("/api/users/{user_id}", ("GET",)) in routes
     assert ("/api/users/{user_id}", ("PUT",)) in routes
     assert ("/api/users/{user_id}", ("DELETE",)) in routes
+    assert ("/api/users/{user_id}/active", ("PUT",)) in routes
 
 
 def test_main_app_includes_users_routes() -> None:

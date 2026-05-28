@@ -126,6 +126,40 @@ async def test_delete_user_deletes_user(
 
 
 @pytest.mark.asyncio
+async def test_set_user_active_toggles_flag_and_bumps_timestamp(
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
+    from src.users.service import set_user_active
+
+    user = await create_user(database_session)
+    user.is_active = False
+    database_session.add(user)
+    await database_session.commit()
+    await database_session.refresh(user)
+    original_updated_at = user.updated_at
+
+    result = await set_user_active(user.id, True, database_session)
+
+    assert result.is_active is True
+    assert result.updated_at > original_updated_at
+
+    deactivated = await set_user_active(result.id, False, database_session)
+    assert deactivated.is_active is False
+
+
+@pytest.mark.asyncio
+async def test_set_user_active_raises_when_user_missing(
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
+    from src.users.service import set_user_active
+
+    with pytest.raises(UserNotFoundError):
+        await set_user_active(uuid4(), True, database_session)
+
+
+@pytest.mark.asyncio
 async def test_list_users_returns_total_and_paginated_users(
     database_session: AsyncSession,
     seeded_roles: dict[str, Role],

@@ -20,6 +20,12 @@ class UserUpdateRequest(BaseModel):
     )
 
 
+class SetUserActiveRequest(BaseModel):
+    """Admin-only request to toggle a user's active flag."""
+
+    is_active: bool = Field(description="Whether the account can authenticate.")
+
+
 class UserResponseFull(BaseModel):
     """Full user information for admin responses."""
 
