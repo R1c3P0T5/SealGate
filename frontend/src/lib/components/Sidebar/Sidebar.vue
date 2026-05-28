@@ -8,7 +8,7 @@ defineProps<{
 
 <template>
   <aside
-    class="sticky top-0 flex h-screen w-[260px] shrink-0 flex-col gap-3 overflow-y-auto border-r border-border bg-subtle px-3.5 py-4.5"
+    class="sticky top-0 flex h-dvh w-[260px] shrink-0 flex-col gap-3 overflow-y-auto border-r border-border bg-subtle px-3.5 pt-4.5 pb-[max(1.125rem,env(safe-area-inset-bottom))]"
   >
     <!-- Brand row -->
     <div class="flex items-center justify-between gap-2 border-b border-border-soft pb-2.5">
