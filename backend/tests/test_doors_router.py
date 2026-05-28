@@ -13,7 +13,7 @@ from src.auth.utils import create_access_token, hash_password
 from src.access_logs.models import AccessLog
 from src.devices.models import Device
 from src.devices.service import hash_device_token
-from src.doors.access import DOOR_UNLOCK_ACTION
+from src.doors.access import DOOR_DELETE_ACTION, DOOR_UNLOCK_ACTION, DOOR_UPDATE_ACTION
 from src.doors.models import Door, UserDoorPermission
 from src.faces.service import add_face_vector
 from src.permissions.models import Permission, RolePermission
@@ -1091,3 +1091,163 @@ async def test_recognize_door_matched_publish_and_log_failure_returns_500(
 
     assert response.status_code == 500
     assert response.json()["detail"] == "Failed to record door recognition event"
+
+
+async def _create_user_with_per_door_permission(
+    session: AsyncSession,
+    seeded_roles: dict[str, Role],
+    door: Door,
+    action: str,
+) -> tuple[User, str]:
+    """Create a user with only per-door ACL entry — no extra RBAC permissions."""
+    role = seeded_roles["user"]
+    user = User(
+        username=f"pdoor_{uuid4().hex[:10]}",
+        email=f"pdoor_{uuid4().hex[:10]}@example.com",
+        password_hash=hash_password("UserPass123!"),
+        full_name="Per Door User",
+        role_id=role.id,
+        is_active=True,
+    )
+    session.add(user)
+    await session.flush()
+    session.add(UserDoorPermission(user_id=user.id, door_id=door.id, action=action))
+    await session.commit()
+    await session.refresh(user)
+    return user, create_access_token(user.id)
+
+
+@pytest.mark.asyncio
+async def test_update_door_allows_user_with_per_door_update_permission(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
+    door = await _create_door(database_session)
+    _user, token = await _create_user_with_per_door_permission(
+        database_session, seeded_roles, door, DOOR_UPDATE_ACTION
+    )
+
+    response = await client.put(
+        f"/api/doors/{door.id}",
+        json={"location": "Updated Location"},
+        headers=_auth(token),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["location"] == "Updated Location"
+
+
+@pytest.mark.asyncio
+async def test_update_door_denies_user_with_update_permission_on_different_door(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
+    door = await _create_door(database_session)
+    other_door = await _create_door(database_session)
+    _user, token = await _create_user_with_per_door_permission(
+        database_session, seeded_roles, other_door, DOOR_UPDATE_ACTION
+    )
+
+    response = await client.put(
+        f"/api/doors/{door.id}",
+        json={"location": "Should Fail"},
+        headers=_auth(token),
+    )
+
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_delete_door_allows_user_with_per_door_delete_permission(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
+    door = await _create_door(database_session)
+    _user, token = await _create_user_with_per_door_permission(
+        database_session, seeded_roles, door, DOOR_DELETE_ACTION
+    )
+
+    response = await client.delete(f"/api/doors/{door.id}", headers=_auth(token))
+
+    assert response.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_delete_door_denies_user_with_delete_permission_on_different_door(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
+    door = await _create_door(database_session)
+    other_door = await _create_door(database_session)
+    _user, token = await _create_user_with_per_door_permission(
+        database_session, seeded_roles, other_door, DOOR_DELETE_ACTION
+    )
+
+    response = await client.delete(f"/api/doors/{door.id}", headers=_auth(token))
+
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_per_door_update_permission_inactive_user_denied(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
+    door = await _create_door(database_session)
+    user, token = await _create_user_with_per_door_permission(
+        database_session, seeded_roles, door, DOOR_UPDATE_ACTION
+    )
+    user.is_active = False
+    database_session.add(user)
+    await database_session.commit()
+
+    response = await client.put(
+        f"/api/doors/{door.id}",
+        json={"location": "Should Fail"},
+        headers=_auth(token),
+    )
+
+    assert response.status_code in (401, 403)
+
+
+@pytest.mark.asyncio
+async def test_per_door_update_permission_does_not_grant_delete(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
+    """update ACL on a door must not allow delete on the same door."""
+    door = await _create_door(database_session)
+    _user, token = await _create_user_with_per_door_permission(
+        database_session, seeded_roles, door, DOOR_UPDATE_ACTION
+    )
+
+    response = await client.delete(f"/api/doors/{door.id}", headers=_auth(token))
+
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_per_door_delete_permission_does_not_grant_update(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
+    """delete ACL on a door must not allow update on the same door."""
+    door = await _create_door(database_session)
+    _user, token = await _create_user_with_per_door_permission(
+        database_session, seeded_roles, door, DOOR_DELETE_ACTION
+    )
+
+    response = await client.put(
+        f"/api/doors/{door.id}",
+        json={"location": "Cross-action escalation"},
+        headers=_auth(token),
+    )
+
+    assert response.status_code == 403

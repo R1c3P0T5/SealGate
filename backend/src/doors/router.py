@@ -15,12 +15,23 @@ from fastapi import (
 
 from src.access_logs.schemas import AccessLogCreate, AccessLogResponse
 from src.access_logs.service import create_access_log
-from src.auth.dependencies import require_permission
+from src.auth.dependencies import get_current_user, require_permission
 from src.core.config import get_settings
 from src.core.database import SessionDep
-from src.core.exceptions import DoorInactiveError, DoorMqttNotConfiguredError
+from src.core.exceptions import (
+    DoorInactiveError,
+    DoorMqttNotConfiguredError,
+    PermissionDeniedError,
+)
+from src.core.permissions import user_permissions
 from src.devices.auth import DeviceAuthError, get_device_door
-from src.doors.access import user_can_unlock_door
+from src.doors.access import (
+    DOOR_DELETE_ACTION,
+    DOOR_READ_ACTION,
+    DOOR_UPDATE_ACTION,
+    user_can_manage_door,
+    user_can_unlock_door,
+)
 from src.doors.mqtt import DoorUnlockPublishError, publish_door_unlock
 from src.doors.schemas import (
     DoorCreateRequest,
@@ -44,6 +55,24 @@ from src.users.models import User
 
 router = APIRouter(prefix="/api/doors", tags=["doors"])
 logger = logging.getLogger(__name__)
+
+
+def _require_door_permission(rbac_permission: str, door_action: str):
+    """Dependency: allow if user has the global RBAC permission OR a per-door ACL entry."""
+
+    async def _dep(
+        door_id: Annotated[UUID, Path()],
+        current_user: Annotated[User, Depends(get_current_user)],
+        session: SessionDep,
+    ) -> User:
+        perms = await user_permissions(current_user, session)
+        if rbac_permission in perms:
+            return current_user
+        if await user_can_manage_door(current_user.id, door_id, door_action, session):
+            return current_user
+        raise PermissionDeniedError()
+
+    return _dep
 
 
 def _to_response(door) -> DoorResponse:
@@ -86,7 +115,9 @@ async def list_doors_endpoint(
 async def get_door_endpoint(
     door_id: Annotated[UUID, Path(description="Door ID to fetch.")],
     session: SessionDep,
-    current_user: Annotated[User, Depends(require_permission("door:read"))],
+    current_user: Annotated[
+        User, Depends(_require_door_permission("door:read", DOOR_READ_ACTION))
+    ],
 ) -> DoorResponse:
     door = await get_door_by_id(door_id, session)
     return _to_response(door)
@@ -118,7 +149,9 @@ async def update_door_endpoint(
     door_id: Annotated[UUID, Path(description="Door ID to update.")],
     request: DoorUpdateRequest,
     session: SessionDep,
-    current_user: Annotated[User, Depends(require_permission("door:update"))],
+    current_user: Annotated[
+        User, Depends(_require_door_permission("door:update", DOOR_UPDATE_ACTION))
+    ],
 ) -> DoorResponse:
     door = await update_door(door_id, request, session)
     return _to_response(door)
@@ -133,7 +166,9 @@ async def update_door_endpoint(
 async def delete_door_endpoint(
     door_id: Annotated[UUID, Path(description="Door ID to delete.")],
     session: SessionDep,
-    current_user: Annotated[User, Depends(require_permission("door:delete"))],
+    current_user: Annotated[
+        User, Depends(_require_door_permission("door:delete", DOOR_DELETE_ACTION))
+    ],
 ) -> None:
     await delete_door(door_id, session)
 
