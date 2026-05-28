@@ -13,3 +13,10 @@ class Door(SQLModel, table=True):
     location: str | None = Field(default=None, max_length=256)
     is_active: bool = Field(default=True, nullable=False)
     created_at: datetime = Field(default_factory=utc_now_naive, nullable=False)
+
+
+class UserDoorPermission(SQLModel, table=True):
+    user_id: UUID = Field(foreign_key="user.id", primary_key=True)
+    door_id: UUID = Field(foreign_key="door.id", primary_key=True, index=True)
+    action: str = Field(primary_key=True, max_length=32)
+    created_at: datetime = Field(default_factory=utc_now_naive, nullable=False)

@@ -4,6 +4,7 @@ from httpx import AsyncClient
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.auth.utils import create_access_token
+from src.doors.models import Door
 from src.permissions.models import Permission, RolePermission
 from src.roles.models import Role
 from src.users.models import User
@@ -130,6 +131,71 @@ async def test_put_user_permissions_non_admin_forbidden(
         headers={"Authorization": f"Bearer {token}"},
         json={"overrides": []},
     )
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_user_door_access_admin_can_replace_allowed_doors(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    full_setup: dict,
+) -> None:
+    admin = full_setup["admin"]
+    user = full_setup["user"]
+    door = Door(name="lab", mqtt_id="lab")
+    other_door = Door(name="office", mqtt_id="office")
+    database_session.add(door)
+    database_session.add(other_door)
+    await database_session.commit()
+    await database_session.refresh(door)
+    await database_session.refresh(other_door)
+    token = create_access_token(admin.id)
+
+    response = await client.put(
+        f"/api/users/{user.id}/doors",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"door_ids": [str(door.id)]},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"door_ids": [str(door.id)]}
+
+    check = await client.get(
+        f"/api/users/{user.id}/doors",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert check.status_code == 200
+    assert check.json() == {"door_ids": [str(door.id)]}
+
+    response = await client.put(
+        f"/api/users/{user.id}/doors",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"door_ids": [str(other_door.id)]},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"door_ids": [str(other_door.id)]}
+
+
+@pytest.mark.asyncio
+async def test_user_door_access_non_admin_forbidden(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    full_setup: dict,
+) -> None:
+    user = full_setup["user"]
+    door = Door(name="restricted", mqtt_id="restricted")
+    database_session.add(door)
+    await database_session.commit()
+    await database_session.refresh(door)
+    token = create_access_token(user.id)
+
+    response = await client.put(
+        f"/api/users/{user.id}/doors",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"door_ids": [str(door.id)]},
+    )
+
     assert response.status_code == 403
 
 
