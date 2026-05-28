@@ -17,8 +17,12 @@ from src.core.config import get_settings
 from src.devices.router import router as devices_router
 from src.doors.router import router as doors_router
 from src.faces.router import router as faces_router
+from src.handsign.registry import HandsignFSMRegistry
+from src.handsign.router import handsign_feed_router
 from src.handsign.router import door_jutsu_router as handsign_door_router
+from src.handsign.router import init_handsign
 from src.handsign.router import router as jutsu_router
+from src.handsign.session import DoorSessionStore
 from src.permissions.router import router as permissions_router
 from src.roles.router import router as roles_router
 from src.users.router import router as users_router
@@ -55,6 +59,7 @@ def create_app() -> FastAPI:
     app.state.access_event_broker = AccessEventBroker()
     app.state.ws_ticket_store = WebSocketTicketStore()
     app.state.camera_frame_broker = CameraFrameBroker()
+    init_handsign(HandsignFSMRegistry(), DoorSessionStore())
 
     app.add_middleware(
         CORSMiddleware,
@@ -72,6 +77,7 @@ def create_app() -> FastAPI:
     app.include_router(faces_router)
     app.include_router(jutsu_router)
     app.include_router(handsign_door_router)
+    app.include_router(handsign_feed_router)
     app.include_router(doors_router)
     app.include_router(access_logs_router)
     app.include_router(access_events_router)

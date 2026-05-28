@@ -50,3 +50,14 @@ class JutsuListResponse(BaseModel):
     skip: int
     limit: int
     jutsu: list[JutsuResponse]
+
+
+class HandsignFeedRequest(BaseModel):
+    sign: str = Field(description="Confirmed romaji sign name (e.g. 'tora').")
+    timestamp: float = Field(description="Unix timestamp from Jetson.")
+
+
+class HandsignFeedResponse(BaseModel):
+    step: int = Field(description="Current FSM progress step (0-based).")
+    total: int = Field(description="Total steps in the leading jutsu.")
+    completed: bool = Field(description="Whether a jutsu was completed this feed.")
