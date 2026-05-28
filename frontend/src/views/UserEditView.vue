@@ -2,13 +2,14 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 
-import { Alert, Button, Skeleton, useToast } from '@/lib'
+import { Alert, Button, Skeleton, Switch, useToast } from '@/lib'
 import UserEditLayout from '@/layouts/UserEditLayout.vue'
 import PermissionsEditor from '@/components/PermissionsEditor.vue'
 import {
   getUserApiUsersUserIdGet,
   listPermissionsApiPermissionsGet,
   listRolesApiRolesGet,
+  setActiveApiUsersUserIdActivePut,
   setPermissionsApiUsersUserIdPermissionsPut,
   setRoleApiUsersUserIdRolePut,
   userPermissionsApiUsersUserIdPermissionsGet,
@@ -39,6 +40,8 @@ const initialRoleId = ref<string | null>(null)
 const draftRoleId = ref<string | null>(null)
 const initialOverrides = ref<PermissionOverride[]>([])
 const draftOverrides = ref<PermissionOverride[]>([])
+const initialActive = ref(false)
+const draftActive = ref(false)
 
 function errorMessage(value: unknown, fallback: string) {
   if (value && typeof value === 'object' && 'detail' in value) {
@@ -71,6 +74,8 @@ async function loadAll() {
     const role = roles.value.find((r) => r.name === user.value?.role_name) ?? null
     initialRoleId.value = role?.id ?? null
     draftRoleId.value = role?.id ?? null
+    initialActive.value = user.value?.is_active ?? false
+    draftActive.value = initialActive.value
   } catch (err) {
     loadError.value = errorMessage(err, 'Could not load user.')
   } finally {
@@ -87,12 +92,21 @@ const overridesChanged = computed(() => {
       .join('|')
   return norm(draftOverrides.value) !== norm(initialOverrides.value)
 })
-const dirty = computed(() => roleChanged.value || overridesChanged.value)
+const activeChanged = computed(() => draftActive.value !== initialActive.value)
+const dirty = computed(() => roleChanged.value || overridesChanged.value || activeChanged.value)
 
 async function save() {
   if (!user.value || !dirty.value) return
   saving.value = true
   try {
+    if (activeChanged.value) {
+      await setActiveApiUsersUserIdActivePut({
+        path: { user_id: user.value.id },
+        body: { is_active: draftActive.value },
+        throwOnError: true,
+      })
+      user.value.is_active = draftActive.value
+    }
     if (roleChanged.value && draftRoleId.value) {
       await setRoleApiUsersUserIdRolePut({
         path: { user_id: user.value.id },
@@ -111,6 +125,7 @@ async function save() {
     }
     initialRoleId.value = draftRoleId.value
     initialOverrides.value = draftOverrides.value.map((o) => ({ ...o }))
+    initialActive.value = draftActive.value
     toast.show({ title: 'Saved' })
   } catch (err) {
     toast.show({ title: errorMessage(err, 'Save failed.') })
@@ -122,6 +137,7 @@ async function save() {
 function reset() {
   draftRoleId.value = initialRoleId.value
   draftOverrides.value = initialOverrides.value.map((o) => ({ ...o }))
+  draftActive.value = initialActive.value
 }
 
 onMounted(loadAll)
@@ -148,13 +164,26 @@ onMounted(loadAll)
       <Skeleton :height="180" />
     </div>
 
-    <PermissionsEditor
-      v-else-if="user"
-      v-model:role-id="draftRoleId"
-      v-model:overrides="draftOverrides"
-      :roles="roles"
-      :permissions="permissions"
-      :disabled="saving"
-    />
+    <div v-else-if="user" class="grid gap-5">
+      <section class="grid gap-2">
+        <h2 class="font-mono text-[11px] uppercase tracking-[0.1em] text-text-placeholder">
+          Account
+        </h2>
+        <Switch
+          v-model="draftActive"
+          label="Active"
+          description="Inactive accounts cannot log in."
+          :disabled="saving"
+        />
+      </section>
+
+      <PermissionsEditor
+        v-model:role-id="draftRoleId"
+        v-model:overrides="draftOverrides"
+        :roles="roles"
+        :permissions="permissions"
+        :disabled="saving"
+      />
+    </div>
   </UserEditLayout>
 </template>
