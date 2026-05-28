@@ -35,7 +35,7 @@ async def user_permissions(user: User, session: AsyncSession) -> set[str]:
 async def check_access(
     current_user: User, user_id: UUID, permission: str, session: AsyncSession
 ) -> None:
-    """Allow if current_user is the target user, else require named permission."""
+    """Allow if current_user is the target user (implicit self-service), else require named permission."""
     if current_user.id == user_id:
         return
     perms = await user_permissions(current_user, session)
