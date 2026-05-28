@@ -2,6 +2,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi.routing import APIRoute
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.auth.schemas import LoginResponse, UserRegisterRequest
@@ -65,6 +66,12 @@ async def test_login_endpoint_returns_login_response(
         ),
         database_session,
     )
+    created = (
+        await database_session.exec(select(User).where(User.username == username))
+    ).one()
+    created.is_active = True
+    database_session.add(created)
+    await database_session.commit()
 
     response = await login(
         UserLoginRequest(username=username, password=password),

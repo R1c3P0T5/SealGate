@@ -67,7 +67,7 @@ async def register_user(
     request: UserRegisterRequest,
     session: AsyncSession,
 ) -> User:
-    """Register a new active user."""
+    """Register a new user pending admin activation."""
 
     validate_password_strength(request.password, request.username, request.email)
     stmt = select(Role).where(Role.name == "user")
@@ -79,7 +79,7 @@ async def register_user(
         password_hash=hash_password(request.password),
         full_name=request.full_name,
         role_id=user_role.id,
-        is_active=True,
+        is_active=False,
     )
 
     try:

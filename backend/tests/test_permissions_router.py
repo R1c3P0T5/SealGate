@@ -149,3 +149,50 @@ async def test_put_user_role_changes_role(
     )
     assert response.status_code == 200
     assert response.json()["role_name"] == "admin"
+
+
+@pytest.mark.asyncio
+async def test_put_user_active_admin_can_toggle(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    full_setup: dict,
+) -> None:
+    admin = full_setup["admin"]
+    user = full_setup["user"]
+    user.is_active = False
+    database_session.add(user)
+    await database_session.commit()
+    token = create_access_token(admin.id)
+
+    response = await client.put(
+        f"/api/users/{user.id}/active",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"is_active": True},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["is_active"] is True
+
+    response = await client.put(
+        f"/api/users/{user.id}/active",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"is_active": False},
+    )
+    assert response.status_code == 200
+    assert response.json()["is_active"] is False
+
+
+@pytest.mark.asyncio
+async def test_put_user_active_non_admin_forbidden(
+    client: AsyncClient, full_setup: dict
+) -> None:
+    user = full_setup["user"]
+    token = create_access_token(user.id)
+
+    response = await client.put(
+        f"/api/users/{user.id}/active",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"is_active": True},
+    )
+
+    assert response.status_code == 403

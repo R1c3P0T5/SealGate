@@ -20,6 +20,7 @@ from src.permissions.service import (
 from src.roles.models import Role
 from src.users.models import User
 from src.users.schemas import (
+    SetUserActiveRequest,
     UserListResponse,
     UserResponseFull,
     UserUpdateRequest,
@@ -28,6 +29,7 @@ from src.users.service import (
     delete_user,
     get_user_by_id,
     list_users,
+    set_user_active,
     update_user,
     user_response,
 )
@@ -189,3 +191,23 @@ async def set_role(
     user = await get_user_by_id(user_id, session)
     updated_user, _ = await set_user_role(user, request.role_id, session)
     return await user_response(updated_user, session)
+
+
+@router.put(
+    "/{user_id}/active",
+    response_model=UserResponse,
+    summary="Set user active flag",
+    description=(
+        "Activate or deactivate a user account. Administrators only. "
+        "Deactivated users cannot authenticate until reactivated."
+    ),
+    response_description="The updated user profile.",
+)
+async def set_active(
+    user_id: Annotated[UUID, Path(description="User ID to update.")],
+    request: SetUserActiveRequest,
+    session: SessionDep,
+    current_user: Annotated[User, Depends(require_permission("user:manage"))],
+) -> UserResponse:
+    user = await set_user_active(user_id, request.is_active, session)
+    return await user_response(user, session)

@@ -36,7 +36,7 @@ async def test_register_user_hashes_password_and_persists_user(
     assert user.username == username
     assert user.password_hash != request.password
     assert user.role_id == seeded_roles["user"].id
-    assert user.is_active is True
+    assert user.is_active is False
 
 
 @pytest.mark.asyncio

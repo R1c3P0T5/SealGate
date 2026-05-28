@@ -74,6 +74,23 @@ async def delete_user(
     await session.commit()
 
 
+async def set_user_active(
+    user_id: UUID,
+    is_active: bool,
+    session: AsyncSession,
+) -> User:
+    user = await get_user_by_id(user_id, session)
+
+    user.is_active = is_active
+    user.updated_at = utc_now_naive()
+
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+
+    return user
+
+
 async def list_users(
     session: AsyncSession,
     skip: int = 0,
