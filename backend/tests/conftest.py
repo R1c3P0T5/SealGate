@@ -18,6 +18,8 @@ from src.core.database import get_session
 from src.devices.models import Device as _Device  # noqa: F401
 from src.faces.models import FaceVector as _FaceVector  # noqa: F401
 from src.doors.models import Door as _Door  # noqa: F401
+from src.handsign.models import DoorJutsu as _DoorJutsu  # noqa: F401
+from src.handsign.models import Jutsu as _Jutsu  # noqa: F401
 from src.permissions.models import (  # noqa: F401
     Permission,
     RolePermission,
