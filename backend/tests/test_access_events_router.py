@@ -72,7 +72,7 @@ def _test_app(database_session: AsyncSession) -> FastAPI:
 def _expected_event() -> dict[str, object]:
     return {
         "id": ANY,
-        "timestamp": "2026-05-20T10:00:00",
+        "timestamp": "2026-05-20T10:00:00Z",
         "door_id": ANY,
         "user_id": ANY,
         "username": "alice",

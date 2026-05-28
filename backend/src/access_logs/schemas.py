@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 
 from src.core.utils import utc_now_naive
 
@@ -40,6 +40,14 @@ class AccessLogResponse(BaseModel):
     door_opened: bool = Field(description="Whether the backend sent an open command.")
 
     model_config = {"from_attributes": True}
+
+    @field_serializer("timestamp")
+    def serialize_timestamp(self, value: datetime) -> str:
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        else:
+            value = value.astimezone(timezone.utc)
+        return value.isoformat().replace("+00:00", "Z")
 
 
 class AccessLogListResponse(BaseModel):

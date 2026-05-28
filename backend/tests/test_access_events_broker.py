@@ -40,7 +40,7 @@ async def test_access_event_broker_connect_disconnect_and_publish() -> None:
     assert websocket.sent == [
         {
             "id": str(event.id),
-            "timestamp": "2026-05-20T09:30:00",
+            "timestamp": "2026-05-20T09:30:00Z",
             "door_id": str(event.door_id),
             "user_id": str(event.user_id),
             "username": "alice",
