@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Path, Query, status
@@ -21,6 +21,7 @@ from src.permissions.service import (
 from src.roles.models import Role
 from src.users.models import User
 from src.users.schemas import (
+    ChangePasswordRequest,
     SetUserActiveRequest,
     SetUserDoorAccessRequest,
     UserDoorAccessResponse,
@@ -29,6 +30,7 @@ from src.users.schemas import (
     UserUpdateRequest,
 )
 from src.users.service import (
+    change_password,
     delete_user,
     get_user_by_id,
     list_users,
@@ -37,6 +39,8 @@ from src.users.service import (
     user_response,
 )
 
+
+DoorAction = Literal["unlock", "read", "update", "delete"]
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -158,6 +162,26 @@ async def delete_user_profile(
     await delete_user(user_id, session)
 
 
+@router.put(
+    "/{user_id}/password",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Change password",
+    description=(
+        "Change a user's password. Users must supply their current password when "
+        "changing their own. Administrators may change any user's password without "
+        "providing the current password."
+    ),
+)
+async def change_user_password(
+    user_id: Annotated[UUID, Path(description="User ID whose password to change.")],
+    request: ChangePasswordRequest,
+    session: SessionDep,
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> None:
+    await check_access(current_user, user_id, "user:update", session)
+    await change_password(user_id, request, current_user, session)
+
+
 @router.get("/{user_id}/permissions", response_model=UserPermissionsResponse)
 async def user_permissions(
     user_id: Annotated[UUID, Path()],
@@ -189,9 +213,12 @@ async def user_door_access(
     user_id: Annotated[UUID, Path()],
     session: SessionDep,
     current_user: Annotated[User, Depends(require_permission("user:manage"))],
+    action: Annotated[
+        DoorAction, Query(description="Door permission action to query.")
+    ] = "unlock",
 ) -> UserDoorAccessResponse:
     await get_user_by_id(user_id, session)
-    door_ids = await list_user_door_access(user_id, session)
+    door_ids = await list_user_door_access(user_id, session, action=action)
     return UserDoorAccessResponse(door_ids=door_ids)
 
 
@@ -201,9 +228,14 @@ async def set_user_door_access(
     request: SetUserDoorAccessRequest,
     session: SessionDep,
     current_user: Annotated[User, Depends(require_permission("user:manage"))],
+    action: Annotated[
+        DoorAction, Query(description="Door permission action to assign.")
+    ] = "unlock",
 ) -> UserDoorAccessResponse:
     await get_user_by_id(user_id, session)
-    door_ids = await replace_user_door_access(user_id, request.door_ids, session)
+    door_ids = await replace_user_door_access(
+        user_id, request.door_ids, session, action=action
+    )
     return UserDoorAccessResponse(door_ids=door_ids)
 
 

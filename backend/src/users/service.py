@@ -6,15 +6,18 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.auth.schemas import UserResponse
+from src.auth.utils import hash_password, validate_password_strength, verify_password
 from src.core.exceptions import (
+    CurrentPasswordRequiredError,
     EmailAlreadyInUseError,
+    InvalidCredentialsError,
     UserNotFoundError,
 )
 from src.core.utils import utc_now_naive
 from src.doors.access import delete_permissions_for_user
 from src.roles.models import Role
 from src.users.models import User
-from src.users.schemas import UserUpdateRequest
+from src.users.schemas import ChangePasswordRequest, UserUpdateRequest
 
 
 async def user_response(user: User, session: AsyncSession) -> UserResponse:
@@ -73,6 +76,28 @@ async def delete_user(
 
     await delete_permissions_for_user(user.id, session)
     await session.delete(user)
+    await session.commit()
+
+
+async def change_password(
+    user_id: UUID,
+    request: ChangePasswordRequest,
+    acting_user: User,
+    session: AsyncSession,
+) -> None:
+    user = await get_user_by_id(user_id, session)
+
+    if acting_user.id == user_id:
+        if not request.current_password:
+            raise CurrentPasswordRequiredError()
+        if not verify_password(request.current_password, user.password_hash):
+            raise InvalidCredentialsError()
+
+    validate_password_strength(request.new_password, user.username, user.email)
+    user.password_hash = hash_password(request.new_password)
+    user.updated_at = utc_now_naive()
+
+    session.add(user)
     await session.commit()
 
 

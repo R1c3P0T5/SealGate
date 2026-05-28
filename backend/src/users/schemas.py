@@ -4,6 +4,16 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
+class ChangePasswordRequest(BaseModel):
+    """Password change request."""
+
+    current_password: str | None = Field(
+        default=None,
+        description="Current password. Required when changing your own password.",
+    )
+    new_password: str = Field(description="New password.")
+
+
 class UserUpdateRequest(BaseModel):
     """User profile update request."""
 

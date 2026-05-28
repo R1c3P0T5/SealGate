@@ -51,6 +51,11 @@ class PasswordValidationError(BaseAPIError):
     detail = "Password does not meet strength requirements"
 
 
+class CurrentPasswordRequiredError(BaseAPIError):
+    status_code = 400
+    detail = "Current password is required to change your own password"
+
+
 class InvalidTokenError(BaseAPIError):
     status_code = 401
     detail = "Invalid or expired token"
