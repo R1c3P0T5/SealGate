@@ -17,6 +17,8 @@ from src.core.config import get_settings
 from src.devices.router import router as devices_router
 from src.doors.router import router as doors_router
 from src.faces.router import router as faces_router
+from src.handsign.router import door_jutsu_router as handsign_door_router
+from src.handsign.router import router as jutsu_router
 from src.permissions.router import router as permissions_router
 from src.roles.router import router as roles_router
 from src.users.router import router as users_router
@@ -57,10 +59,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
-            "http://localhost",
-            "http://localhost:80",
             "http://localhost:3000",
-            "http://localhost:5173",
             "http://localhost:8000",
         ],
         allow_credentials=True,
@@ -71,6 +70,8 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(users_router)
     app.include_router(faces_router)
+    app.include_router(jutsu_router)
+    app.include_router(handsign_door_router)
     app.include_router(doors_router)
     app.include_router(access_logs_router)
     app.include_router(access_events_router)
