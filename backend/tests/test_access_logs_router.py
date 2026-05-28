@@ -132,7 +132,7 @@ async def test_list_access_logs_returns_logs_for_user_with_permission(
     assert data["logs"] == [
         {
             "id": str(access_log.id),
-            "timestamp": "2026-05-19T08:30:00",
+            "timestamp": "2026-05-19T08:30:00Z",
             "door_id": str(door.id),
             "user_id": str(access_log.user_id),
             "username": "alice",
@@ -170,3 +170,20 @@ async def test_list_access_logs_supports_pagination(
     assert data["skip"] == 1
     assert data["limit"] == 1
     assert len(data["logs"]) == 1
+
+
+def test_access_log_response_serializes_naive_utc_timestamp_with_z_suffix() -> None:
+    from src.access_logs.schemas import AccessLogResponse
+
+    access_log = AccessLog(
+        timestamp=datetime(2026, 5, 19, 8, 30, 0),
+        door_id=uuid4(),
+        user_id=None,
+        username=None,
+        confidence=None,
+        door_opened=False,
+    )
+
+    payload = AccessLogResponse.model_validate(access_log).model_dump(mode="json")
+
+    assert payload["timestamp"] == "2026-05-19T08:30:00Z"
