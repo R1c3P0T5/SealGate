@@ -24,6 +24,7 @@ from src.ws_tickets.router import router as ws_tickets_router
 from src.ws_tickets.store import WebSocketTicketStore
 import src.roles.models as _roles_models  # noqa: F401
 import src.permissions.models as _permissions_models  # noqa: F401
+import src.handsign.models as _handsign_models  # noqa: F401
 
 
 @asynccontextmanager

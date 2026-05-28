@@ -10,6 +10,11 @@ from src.core.config import get_settings
 from src.devices.models import Device as _Device  # noqa: F401
 from src.doors.models import Door as _Door  # noqa: F401
 from src.faces.models import FaceVector as _FaceVector  # noqa: F401
+from src.roles.models import Role as _Role  # noqa: F401
+from src.permissions.models import Permission as _Permission  # noqa: F401
+from src.permissions.models import RolePermission as _RolePermission  # noqa: F401
+from src.permissions.models import UserPermissionOverride as _UserPermissionOverride  # noqa: F401
+import src.handsign.models as _handsign_models  # noqa: F401
 from src.users.models import User
 
 # this is the Alembic Config object, which provides
