@@ -6,6 +6,7 @@ import type { SelectOption } from '@/lib'
 import LiveRecognitionLayout from '@/layouts/LiveRecognitionLayout.vue'
 import {
   createCameraPreviewTicketApiWsTicketsCameraPreviewPost,
+  getCurrentUserInfoApiAuthMeGet,
   listDoorsEndpointApiDoorsGet,
   unlockDoorEndpointApiDoorsDoorIdUnlockPost,
 } from '@/api/sdk.gen'
@@ -142,8 +143,12 @@ function connect() {
       // ignore malformed payload
     }
   }
-  socket.onclose = () => {
+  socket.onclose = (event) => {
     status.value = 'offline'
+    if (event.code === 1008 && auth.isAuthenticated) {
+      void getCurrentUserInfoApiAuthMeGet().catch(() => {})
+      return
+    }
     if (!manuallyClosed) scheduleReconnect()
   }
   socket.onerror = () => {
