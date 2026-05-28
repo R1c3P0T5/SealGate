@@ -7,6 +7,7 @@ from src.auth.dependencies import get_current_user, require_permission
 from src.auth.schemas import UserResponse
 from src.core.database import SessionDep
 from src.core.permissions import check_access
+from src.doors.access import list_user_door_access, replace_user_door_access
 from src.permissions.schemas import (
     SetUserPermissionsRequest,
     SetUserRoleRequest,
@@ -21,6 +22,8 @@ from src.roles.models import Role
 from src.users.models import User
 from src.users.schemas import (
     SetUserActiveRequest,
+    SetUserDoorAccessRequest,
+    UserDoorAccessResponse,
     UserListResponse,
     UserResponseFull,
     UserUpdateRequest,
@@ -179,6 +182,29 @@ async def set_permissions(
     await set_overrides(user, overrides, session)
     detail = await permissions_detail(user, session)
     return UserPermissionsResponse(**detail)
+
+
+@router.get("/{user_id}/doors", response_model=UserDoorAccessResponse)
+async def user_door_access(
+    user_id: Annotated[UUID, Path()],
+    session: SessionDep,
+    current_user: Annotated[User, Depends(require_permission("user:manage"))],
+) -> UserDoorAccessResponse:
+    await get_user_by_id(user_id, session)
+    door_ids = await list_user_door_access(user_id, session)
+    return UserDoorAccessResponse(door_ids=door_ids)
+
+
+@router.put("/{user_id}/doors", response_model=UserDoorAccessResponse)
+async def set_user_door_access(
+    user_id: Annotated[UUID, Path()],
+    request: SetUserDoorAccessRequest,
+    session: SessionDep,
+    current_user: Annotated[User, Depends(require_permission("user:manage"))],
+) -> UserDoorAccessResponse:
+    await get_user_by_id(user_id, session)
+    door_ids = await replace_user_door_access(user_id, request.door_ids, session)
+    return UserDoorAccessResponse(door_ids=door_ids)
 
 
 @router.put("/{user_id}/role", response_model=UserResponse)

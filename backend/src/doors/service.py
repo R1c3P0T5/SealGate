@@ -10,6 +10,7 @@ from src.core.exceptions import (
     DoorNameAlreadyExistsError,
     DoorNotFoundError,
 )
+from src.doors.access import delete_permissions_for_door
 from src.doors.models import Door
 from src.doors.schemas import DoorCreateRequest, DoorUpdateRequest
 
@@ -82,5 +83,6 @@ async def update_door(
 
 async def delete_door(door_id: UUID, session: AsyncSession) -> None:
     door = await get_door_by_id(door_id, session)
+    await delete_permissions_for_door(door.id, session)
     await session.delete(door)
     await session.commit()

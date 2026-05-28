@@ -11,6 +11,7 @@ from src.core.exceptions import (
     UserNotFoundError,
 )
 from src.core.utils import utc_now_naive
+from src.doors.access import delete_permissions_for_user
 from src.roles.models import Role
 from src.users.models import User
 from src.users.schemas import UserUpdateRequest
@@ -70,6 +71,7 @@ async def delete_user(
 ) -> None:
     user = await get_user_by_id(user_id, session)
 
+    await delete_permissions_for_user(user.id, session)
     await session.delete(user)
     await session.commit()
 

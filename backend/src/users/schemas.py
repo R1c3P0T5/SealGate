@@ -26,6 +26,18 @@ class SetUserActiveRequest(BaseModel):
     is_active: bool = Field(description="Whether the account can authenticate.")
 
 
+class SetUserDoorAccessRequest(BaseModel):
+    """Admin-only request to replace doors a user may unlock."""
+
+    door_ids: list[UUID] = Field(description="Door IDs the user may unlock.")
+
+
+class UserDoorAccessResponse(BaseModel):
+    """Doors a user may unlock."""
+
+    door_ids: list[UUID] = Field(description="Door IDs the user may unlock.")
+
+
 class UserResponseFull(BaseModel):
     """Full user information for admin responses."""
 

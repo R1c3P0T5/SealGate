@@ -8,6 +8,8 @@ from src.core.exceptions import (
     EmailAlreadyInUseError,
     UserNotFoundError,
 )
+from src.doors.access import DOOR_UNLOCK_ACTION
+from src.doors.models import Door, UserDoorPermission
 from src.roles.models import Role
 from src.users.models import User
 from src.users.schemas import UserUpdateRequest
@@ -123,6 +125,35 @@ async def test_delete_user_deletes_user(
 
     with pytest.raises(UserNotFoundError):
         await get_user_by_id(user.id, database_session)
+
+
+@pytest.mark.asyncio
+async def test_delete_user_removes_door_permissions(
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
+    from src.users.service import delete_user
+
+    user = await create_user(database_session)
+    door = Door(name=f"door_{uuid4().hex[:12]}", mqtt_id=f"door_{uuid4().hex[:12]}")
+    database_session.add(door)
+    await database_session.commit()
+    await database_session.refresh(door)
+    database_session.add(
+        UserDoorPermission(
+            user_id=user.id,
+            door_id=door.id,
+            action=DOOR_UNLOCK_ACTION,
+        )
+    )
+    await database_session.commit()
+
+    assert await delete_user(user.id, database_session) is None
+
+    permission = await database_session.get(
+        UserDoorPermission, (user.id, door.id, DOOR_UNLOCK_ACTION)
+    )
+    assert permission is None
 
 
 @pytest.mark.asyncio

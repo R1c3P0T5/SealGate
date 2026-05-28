@@ -20,6 +20,7 @@ from src.core.config import get_settings
 from src.core.database import SessionDep
 from src.core.exceptions import DoorInactiveError, DoorMqttNotConfiguredError
 from src.devices.auth import DeviceAuthError, get_device_door
+from src.doors.access import user_can_unlock_door
 from src.doors.mqtt import DoorUnlockPublishError, publish_door_unlock
 from src.doors.schemas import (
     DoorCreateRequest,
@@ -233,15 +234,18 @@ async def recognize_door_endpoint(
             door_opened=False,
             access_log_id=None,
         )
+    assert recognition.user_id is not None
 
-    door_opened = True
-    try:
-        await publish_door_unlock(door)
-    except (DoorUnlockPublishError, DoorMqttNotConfiguredError) as exc:
-        logger.warning(
-            "MQTT publish failed for door %s during recognition: %s", door.id, exc
-        )
-        door_opened = False
+    door_opened = False
+    if await user_can_unlock_door(recognition.user_id, door.id, session):
+        door_opened = True
+        try:
+            await publish_door_unlock(door)
+        except (DoorUnlockPublishError, DoorMqttNotConfiguredError) as exc:
+            logger.warning(
+                "MQTT publish failed for door %s during recognition: %s", door.id, exc
+            )
+            door_opened = False
 
     response = DoorRecognizeResponse(
         matched=True,
