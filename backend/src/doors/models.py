@@ -12,6 +12,7 @@ class Door(SQLModel, table=True):
     mqtt_id: str | None = Field(default=None, unique=True, index=True, max_length=64)
     location: str | None = Field(default=None, max_length=256)
     is_active: bool = Field(default=True, nullable=False)
+    auth_mode: str = Field(default="face", nullable=False, max_length=16)
     created_at: datetime = Field(default_factory=utc_now_naive, nullable=False)
 
 
