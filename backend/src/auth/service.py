@@ -31,17 +31,17 @@ async def ensure_default_admin(
     ):
         return None
 
+    normalized_username = settings.DEFAULT_ADMIN_USERNAME.lower()
+
     existing_user = (
-        await session.exec(
-            select(User).where(User.username == settings.DEFAULT_ADMIN_USERNAME)
-        )
+        await session.exec(select(User).where(User.username == normalized_username))
     ).one_or_none()
     if existing_user is not None:
         return existing_user
 
     validate_password_strength(
         settings.DEFAULT_ADMIN_PASSWORD,
-        settings.DEFAULT_ADMIN_USERNAME,
+        normalized_username,
         settings.DEFAULT_ADMIN_EMAIL,
     )
     admin_role = (
@@ -51,7 +51,7 @@ async def ensure_default_admin(
         raise RuntimeError("Admin role seed data is missing.")
 
     admin = User(
-        username=settings.DEFAULT_ADMIN_USERNAME,
+        username=normalized_username,
         email=settings.DEFAULT_ADMIN_EMAIL,
         password_hash=hash_password(settings.DEFAULT_ADMIN_PASSWORD),
         full_name=settings.DEFAULT_ADMIN_FULL_NAME or settings.DEFAULT_ADMIN_USERNAME,
@@ -69,12 +69,14 @@ async def register_user(
 ) -> User:
     """Register a new user pending admin activation."""
 
-    validate_password_strength(request.password, request.username, request.email)
+    validate_password_strength(
+        request.password, request.username.lower(), request.email
+    )
     stmt = select(Role).where(Role.name == "user")
     user_role = (await session.exec(stmt)).one()
 
     user = User(
-        username=request.username,
+        username=request.username.lower(),
         email=request.email,
         password_hash=hash_password(request.password),
         full_name=request.full_name,
@@ -103,7 +105,9 @@ async def authenticate_user(
     session: AsyncSession,
 ) -> tuple[User, str]:
     user = (
-        await session.exec(select(User).where(User.username == request.username))
+        await session.exec(
+            select(User).where(User.username == request.username.lower())
+        )
     ).one_or_none()
 
     if user is None:

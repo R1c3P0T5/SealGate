@@ -33,10 +33,52 @@ async def test_register_user_hashes_password_and_persists_user(
     user = await register_user(request, database_session)
 
     assert user.id is not None
-    assert user.username == username
+    assert user.username == username.lower()
     assert user.password_hash != request.password
     assert user.role_id == seeded_roles["user"].id
     assert user.is_active is False
+
+
+@pytest.mark.asyncio
+async def test_register_normalizes_username_to_lowercase(
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
+    from src.auth.service import register_user
+
+    request = UserRegisterRequest(
+        username="MixedCase_User",
+        password="MySecurePass123",
+        full_name="Mixed Case",
+    )
+
+    user = await register_user(request, database_session)
+
+    assert user.username == "mixedcase_user"
+
+
+@pytest.mark.asyncio
+async def test_register_rejects_duplicate_username_case_insensitive(
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
+    from src.auth.service import register_user
+
+    base = uuid4().hex[:10]
+    await register_user(
+        UserRegisterRequest(
+            username=f"user_{base}", password="MySecurePass123", full_name="A"
+        ),
+        database_session,
+    )
+
+    with pytest.raises(UsernameAlreadyExistsError):
+        await register_user(
+            UserRegisterRequest(
+                username=f"USER_{base.upper()}", password="OtherPass456", full_name="B"
+            ),
+            database_session,
+        )
 
 
 @pytest.mark.asyncio
@@ -71,6 +113,7 @@ async def test_authenticate_user_returns_user_and_access_token(
         password_hash=hash_password(password),
         full_name="Login User",
         role_id=seeded_roles["user"].id,
+        is_active=True,
     )
     database_session.add(user)
     await database_session.commit()
@@ -85,6 +128,38 @@ async def test_authenticate_user_returns_user_and_access_token(
     assert authenticated_user.id == user.id
     assert payload is not None
     assert payload["sub"] == str(user.id)
+
+
+@pytest.mark.asyncio
+async def test_authenticate_accepts_mixed_case_username(
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
+    from src.auth.service import authenticate_user, register_user
+
+    password = "MySecurePass123"
+    base = uuid4().hex[:10]
+    await register_user(
+        UserRegisterRequest(username=f"user_{base}", password=password, full_name="X"),
+        database_session,
+    )
+    user_obj = (
+        await database_session.exec(
+            __import__("sqlmodel", fromlist=["select"])
+            .select(User)
+            .where(User.username == f"user_{base}")
+        )
+    ).one()
+    user_obj.is_active = True
+    database_session.add(user_obj)
+    await database_session.commit()
+
+    authenticated, _token = await authenticate_user(
+        UserLoginRequest(username=f"USER_{base.upper()}", password=password),
+        database_session,
+    )
+
+    assert authenticated.id == user_obj.id
 
 
 @pytest.mark.asyncio
