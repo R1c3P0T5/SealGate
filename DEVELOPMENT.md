@@ -69,17 +69,22 @@ services, the camera worker, and a full single-machine stack.
 The Makefile wraps the common Compose commands:
 
 ```bash
-make dev       # development server profile with hot reload
-make dev-full  # development full profile with worker
-make server    # production-style backend + frontend + cloudflared
-make worker    # production-style worker only
-make prod      # production-style full stack
+make dev                    # development server profile with hot reload
+make dev-full               # development full profile with worker
+make server                 # production-style backend + frontend + cloudflared
+make worker                 # production-style worker only
+make prod                   # production-style full stack
+make update                 # pull and recreate the full production stack
+make update PROFILE=server  # pull and recreate only server-side services
+make update PROFILE=worker  # pull and recreate only the Jetson worker
 make logs
 make down
 ```
 
 `docker-compose.override.yml` is used automatically for local development and
-adds bind mounts and hot-reload commands.
+adds bind mounts and hot-reload commands. Production and update targets use only
+`docker-compose.yml`; update targets force container recreation so changed
+`backend/.env` or `jetson/.env` values are applied.
 
 ## Backend Commands
 

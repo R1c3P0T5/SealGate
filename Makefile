@@ -1,41 +1,47 @@
-.PHONY: dev prod server worker full update build push logs down
+COMPOSE_DEV := docker compose
+COMPOSE_PROD := docker compose -f docker-compose.yml
+PROFILE ?= full
+
+.PHONY: dev dev-full prod server worker update build push logs down
 
 # Development — uses override.yml automatically (hot-reload)
 dev:
-	docker compose --profile server up
+	$(COMPOSE_DEV) --profile server up
 
 # Development — all services including worker
 dev-full:
-	docker compose --profile full up
+	$(COMPOSE_DEV) --profile full up
 
 # Production — all services on one machine
 prod:
-	docker compose -f docker-compose.yml --profile full up -d
+	$(COMPOSE_PROD) --profile full up -d --force-recreate
 
 # Server only — backend + frontend (no worker)
 server:
-	docker compose -f docker-compose.yml --profile server up -d
+	$(COMPOSE_PROD) --profile server up -d --force-recreate
 
 # Worker only — jetson worker (run on Jetson or Linux with camera)
 worker:
-	docker compose -f docker-compose.yml --profile worker up -d
+	$(COMPOSE_PROD) --profile worker up -d --force-recreate
 
-# Pull latest images and restart (run this on Jetson after a GitHub push)
+# Pull latest production images and recreate containers.
+# Override PROFILE for a subset, for example: make update PROFILE=worker
 update:
-	docker compose pull && docker compose up -d
+	$(COMPOSE_PROD) --profile $(PROFILE) pull
+	$(COMPOSE_PROD) --profile $(PROFILE) up -d --force-recreate
 
 # Build all images locally
 build:
-	docker compose -f docker-compose.yml build
+	$(COMPOSE_PROD) build
 
 # Push images to registry
 push:
-	docker compose push
+	$(COMPOSE_PROD) push
 
 # Follow logs for all running services
 logs:
-	docker compose logs -f
+	$(COMPOSE_PROD) logs -f
 
 # Stop and remove containers
 down:
-	docker compose down
+	$(COMPOSE_PROD) down
