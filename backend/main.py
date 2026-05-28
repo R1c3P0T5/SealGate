@@ -17,11 +17,15 @@ from src.core.config import get_settings
 from src.devices.router import router as devices_router
 from src.doors.router import router as doors_router
 from src.faces.router import router as faces_router
+from sqlmodel import col, select
+from src.doors.models import Door
+from src.handsign.jutsu import SIGN_KANJI
 from src.handsign.registry import HandsignFSMRegistry
 from src.handsign.router import handsign_feed_router
 from src.handsign.router import door_jutsu_router as handsign_door_router
 from src.handsign.router import init_handsign
 from src.handsign.router import router as jutsu_router
+from src.handsign.service import get_door_jutsu
 from src.handsign.session import DoorSessionStore
 from src.permissions.router import router as permissions_router
 from src.roles.router import router as roles_router
@@ -42,6 +46,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await face_engine.load_engine()
     async with db.session_context() as session:
         await ensure_default_admin(settings, session)
+
+    registry = HandsignFSMRegistry()
+    store = DoorSessionStore()
+    async with db.session_context() as session:
+        handsign_doors = list(
+            (
+                await session.exec(
+                    select(Door).where(col(Door.auth_mode).in_(["handsign", "both"]))
+                )
+            ).all()
+        )
+        for door in handsign_doors:
+            jutsu_rows = await get_door_jutsu(door.id, session)
+            jutsu_dict = {j.name: [SIGN_KANJI[s] for s in j.signs] for j in jutsu_rows}
+            if jutsu_dict:
+                registry.load(door.id, jutsu_dict)
+    init_handsign(registry, store)
     try:
         yield
     finally:
@@ -59,7 +80,6 @@ def create_app() -> FastAPI:
     app.state.access_event_broker = AccessEventBroker()
     app.state.ws_ticket_store = WebSocketTicketStore()
     app.state.camera_frame_broker = CameraFrameBroker()
-    init_handsign(HandsignFSMRegistry(), DoorSessionStore())
 
     app.add_middleware(
         CORSMiddleware,
