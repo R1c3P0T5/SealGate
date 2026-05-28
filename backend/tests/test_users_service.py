@@ -4,15 +4,18 @@ import pytest
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from src.auth.utils import hash_password, verify_password
 from src.core.exceptions import (
+    CurrentPasswordRequiredError,
     EmailAlreadyInUseError,
+    InvalidCredentialsError,
     UserNotFoundError,
 )
 from src.doors.access import DOOR_UNLOCK_ACTION
 from src.doors.models import Door, UserDoorPermission
 from src.roles.models import Role
 from src.users.models import User
-from src.users.schemas import UserUpdateRequest
+from src.users.schemas import ChangePasswordRequest, UserUpdateRequest
 
 
 async def create_user(
@@ -154,6 +157,114 @@ async def test_delete_user_removes_door_permissions(
         UserDoorPermission, (user.id, door.id, DOOR_UNLOCK_ACTION)
     )
     assert permission is None
+
+
+@pytest.mark.asyncio
+async def test_change_password_self_requires_current_password(
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
+    from src.users.service import change_password
+
+    user = await create_user(database_session)
+
+    with pytest.raises(CurrentPasswordRequiredError):
+        await change_password(
+            user.id,
+            ChangePasswordRequest(new_password="NewSecure456!"),
+            user,
+            database_session,
+        )
+
+
+@pytest.mark.asyncio
+async def test_change_password_self_rejects_wrong_current_password(
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
+    from src.users.service import change_password
+
+    user = await create_user(database_session)
+
+    with pytest.raises(InvalidCredentialsError):
+        await change_password(
+            user.id,
+            ChangePasswordRequest(
+                current_password="wrong", new_password="NewSecure456!"
+            ),
+            user,
+            database_session,
+        )
+
+
+@pytest.mark.asyncio
+async def test_change_password_self_updates_hash(
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
+    from src.users.service import change_password
+
+    old_password = "OldPass123!"
+    user = User(
+        username=f"user_{uuid4().hex[:12]}",
+        password_hash=hash_password(old_password),
+        full_name="PW User",
+        role_id=(
+            await database_session.exec(
+                __import__("sqlmodel", fromlist=["select"])
+                .select(Role)
+                .where(Role.name == "user")
+            )
+        )
+        .one()
+        .id,
+    )
+    database_session.add(user)
+    await database_session.commit()
+    await database_session.refresh(user)
+
+    await change_password(
+        user.id,
+        ChangePasswordRequest(
+            current_password=old_password, new_password="NewSecurePass456!"
+        ),
+        user,
+        database_session,
+    )
+
+    await database_session.refresh(user)
+    assert verify_password("NewSecurePass456!", user.password_hash)
+    assert not verify_password(old_password, user.password_hash)
+
+
+@pytest.mark.asyncio
+async def test_change_password_admin_skips_current_password_check(
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
+    from src.users.service import change_password
+
+    admin = User(
+        username=f"admin_{uuid4().hex[:12]}",
+        password_hash=hash_password("AdminPass123!"),
+        full_name="Admin",
+        role_id=seeded_roles["admin"].id,
+        is_active=True,
+    )
+    target = await create_user(database_session)
+    database_session.add(admin)
+    await database_session.commit()
+    await database_session.refresh(admin)
+
+    await change_password(
+        target.id,
+        ChangePasswordRequest(new_password="NewSecurePass456!"),
+        admin,
+        database_session,
+    )
+
+    await database_session.refresh(target)
+    assert verify_password("NewSecurePass456!", target.password_hash)
 
 
 @pytest.mark.asyncio
