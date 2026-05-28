@@ -72,7 +72,7 @@ watch(
       @click="sidebarOpen = false"
     />
 
-    <div :class="['z-50', sidebarOpen ? 'fixed inset-y-0 left-0' : 'hidden md:block']">
+    <div :class="['z-50', sidebarOpen ? 'fixed left-0 top-0 h-dvh' : 'hidden md:block']">
       <Sidebar brand="FaceGuard">
         <Nav :items="navItems" :model-value="activeKey" @click="navigate" />
         <template #footer>
