@@ -1,8 +1,26 @@
 # Development Guide
 
-This guide covers cross-project contributor workflows: environment variables, command references, generated API client updates, pre-commit hooks, and CI/CD internals. For project overview and architecture, see [README.md](./README.md). For runtime-specific notes, see [backend/README.md](./backend/README.md) and [frontend/README.md](./frontend/README.md).
+This guide covers cross-project contributor workflows: environment variables, Docker Compose profiles, command references, generated API client updates, pre-commit hooks, and CI/CD internals. For project overview and architecture, see [README.md](./README.md). For runtime-specific notes, see [backend/README.md](./backend/README.md), [frontend/README.md](./frontend/README.md), and [jetson/README.md](./jetson/README.md).
 
-## Environment Variables
+## Environment Files
+
+SealGate uses separate environment files for the server, worker, and optional
+Compose-level services:
+
+```bash
+cp .env.example .env
+cp backend/.env.example backend/.env
+cp jetson/.env.example jetson/.env
+```
+
+The root `.env` is read by Docker Compose and provides the Cloudflare Tunnel
+token for profiles that include `cloudflared`. Local development normally uses
+`make dev`, which starts the web app with the development override.
+
+`backend/.env` configures the FastAPI service. `jetson/.env` configures the
+camera worker and includes the door/device identity issued by the backend.
+
+## Backend Environment
 
 Copy `backend/.env.example` to `backend/.env` and fill in the required values.
 
@@ -17,6 +35,51 @@ Copy `backend/.env.example` to `backend/.env` and fill in the required values.
 | `DEFAULT_ADMIN_PASSWORD` | no | — | Password for the seeded admin account. |
 | `DEFAULT_ADMIN_FULL_NAME` | no | — | Display name for the seeded admin account. |
 | `DEFAULT_ADMIN_EMAIL` | no | — | Email for the seeded admin account. |
+
+The backend also accepts face model and MQTT settings from `backend/.env`. See
+[`backend/.env.example`](./backend/.env.example) for the current template.
+
+## Jetson Worker Environment
+
+Copy `jetson/.env.example` to `jetson/.env` when running the camera worker.
+
+| Variable | Required | Description |
+| -------- | -------- | ----------- |
+| `BACKEND_URL` | **yes** | HTTP base URL for the backend. |
+| `BACKEND_WS_URL` | **yes** | WebSocket base URL for camera streaming and commands. |
+| `DOOR_ID` | **yes** | Door UUID assigned in the admin dashboard. |
+| `DEVICE_TOKEN` | **yes** | Device token issued or rotated in the admin dashboard. |
+
+Camera, streaming, recognition cadence, and model-path defaults are documented
+in [`jetson/README.md`](./jetson/README.md).
+Third-party model attribution and license notes are documented in
+[`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md).
+
+## Docker Compose Profiles
+
+The root `docker-compose.yml` defines separate profiles for server-side
+services, the camera worker, and a full single-machine stack.
+
+| Profile | Services | Typical use |
+| ------- | -------- | ----------- |
+| `server` | backend, frontend, cloudflared | Run the web/API side without a local camera worker. |
+| `worker` | Jetson worker | Run the camera worker on a Jetson or Linux machine with a camera. |
+| `full` | backend, frontend, cloudflared, worker | Run the complete stack on one machine. |
+
+The Makefile wraps the common Compose commands:
+
+```bash
+make dev       # development server profile with hot reload
+make dev-full  # development full profile with worker
+make server    # production-style backend + frontend + cloudflared
+make worker    # production-style worker only
+make prod      # production-style full stack
+make logs
+make down
+```
+
+`docker-compose.override.yml` is used automatically for local development and
+adds bind mounts and hot-reload commands.
 
 ## Backend Commands
 
