@@ -1,13 +1,13 @@
 # SealGate Backend
 
-FastAPI service handling user authentication, admin user management,
-image-based face verification, audit logging, and MQTT door-control publishing
-for the SealGate system.
+FastAPI service handling authentication, user and permission management,
+image-based face verification, door/device records, access logs, live camera
+events, and MQTT door-control publishing for the SealGate system.
 
 The backend receives face images, extracts face embeddings internally, matches
-them against stored user face vectors, writes an audit log entry, and publishes
-the door command on a granted match. See [`../README.md`](../README.md) for the
-system-level architecture.
+them against stored user face vectors, writes an access log entry, emits live
+access events, and publishes the door command on a granted match. See
+[`../README.md`](../README.md) for the system-level architecture.
 
 For repository-wide setup, pre-commit hooks, CI behavior, and generated API
 client workflow, see [../DEVELOPMENT.md](../DEVELOPMENT.md). This file focuses
@@ -42,6 +42,8 @@ uv run python scripts/download_models.py
 ```
 
 The files are saved in `backend/models/` and are intentionally ignored by Git.
+See [../THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) for upstream model
+attribution and license notes.
 
 Initialize or migrate the database:
 
@@ -80,7 +82,14 @@ backend/
 │   ├── auth/            # Registration, login, JWT utilities, auth dependencies
 │   ├── users/           # User model, schemas, service layer, CRUD routes
 │   ├── faces/           # Face image endpoints, engine, and cosine matching
-│   ├── audit/           # Audit log model, routes, and query service
+│   ├── doors/           # Door records, schemas, routes, services, MQTT publishing
+│   ├── devices/         # Device records, token auth, routes, and services
+│   ├── roles/           # Role model, schemas, routes, and services
+│   ├── permissions/     # Permission model, schemas, routes, and services
+│   ├── access_logs/     # Access log model, routes, and query service
+│   ├── access_events/   # Live access-event broker and streaming routes
+│   ├── camera/          # Camera frame broker and live camera routes
+│   ├── ws_tickets/      # Short-lived WebSocket ticket issuing and storage
 │   └── core/            # Settings, database session setup, exceptions, security
 ├── tests/               # Unit and integration tests
 ├── alembic/             # Database migrations
@@ -153,7 +162,8 @@ uv run pytest tests --cov
 - Argon2id password hashing through `argon2-cffi`
 - JWT authentication through `python-jose`
 - NumPy for face vector storage and cosine similarity
-- aiomqtt for async MQTT publishing to HiveMQ Cloud
+- OpenCV for YuNet/SFace model inference
+- paho-mqtt for MQTT door-control publishing
 - pytest, pytest-asyncio, pytest-cov, httpx, pyright, and ruff
 
 ## Troubleshooting

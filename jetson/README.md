@@ -33,6 +33,8 @@ python scripts/download_models.py
 ```
 
 The file is saved in `jetson/models/` and is intentionally ignored by Git.
+See [../THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) for upstream model
+attribution and license notes.
 
 ## Running
 
