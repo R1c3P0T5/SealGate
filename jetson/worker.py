@@ -7,6 +7,7 @@
   - 後端送 "start" 訊號時才推送 JPEG 影格到 WS
 """
 import asyncio
+import concurrent.futures
 import json
 import logging
 import os
@@ -20,6 +21,20 @@ import httpx
 import numpy as np
 import websockets
 from dotenv import load_dotenv
+
+try:
+    import mediapipe as mp  # type: ignore[import-untyped]
+    import torch  # type: ignore[import-untyped]
+    import torchvision.transforms as T  # type: ignore[import-untyped]
+
+    try:
+        from jetson.jutsu import SIGN_CLASSES, SignFilter  # type: ignore[import-untyped]
+    except ImportError:
+        from jutsu import SIGN_CLASSES, SignFilter  # type: ignore[import-untyped]
+
+    _HANDSIGN_AVAILABLE = True
+except ImportError:
+    _HANDSIGN_AVAILABLE = False
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -40,6 +55,10 @@ class WorkerSettings:
     max_recognize_in_flight: int = 1
     camera_fail_retry: int = 30
     detector_model: str = "models/face_detection_yunet_2023mar.onnx"
+    handsign_fps: int = 5
+    handsign_hold_ms: int = 500
+    handsign_checkpoint: str = "models/best_cnn.pth"
+    handsign_threshold: float = 0.4
 
 
 def _required_env(name: str) -> str:
@@ -72,6 +91,10 @@ def load_settings() -> WorkerSettings:
         max_recognize_in_flight=int(os.getenv("MAX_RECOGNIZE_IN_FLIGHT", "1")),
         camera_fail_retry=int(os.getenv("CAMERA_FAIL_RETRY", "30")),
         detector_model=os.getenv("FACE_DETECTOR_MODEL", "models/face_detection_yunet_2023mar.onnx"),
+        handsign_fps=int(os.getenv("HANDSIGN_FPS", "5")),
+        handsign_hold_ms=int(os.getenv("HANDSIGN_HOLD_MS", "500")),
+        handsign_checkpoint=os.getenv("HANDSIGN_CHECKPOINT", "models/best_cnn.pth"),
+        handsign_threshold=float(os.getenv("HANDSIGN_THRESHOLD", "0.4")),
     )
 
 _streaming = False
@@ -83,6 +106,7 @@ _background_tasks: set[asyncio.Task[None]] = set()
 _next_recognize_at = 0.0
 _latest_raw_frame: np.ndarray | None = None
 _settings: WorkerSettings
+_handsign_executor: concurrent.futures.ThreadPoolExecutor | None = None
 
 
 def _drain_queue(queue: asyncio.Queue[Any]) -> None:
@@ -345,6 +369,102 @@ async def detect_task() -> None:
         await asyncio.sleep(max(0.0, detect_interval - elapsed))
 
 
+async def handsign_task() -> None:
+    global _handsign_executor
+    if not _HANDSIGN_AVAILABLE:
+        logger.info("mediapipe/torch not available — handsign loop disabled")
+        return
+    checkpoint = Path(_settings.handsign_checkpoint)
+    full_path = checkpoint if checkpoint.is_absolute() else Path(__file__).parent / checkpoint
+    if not full_path.exists():
+        logger.warning("Handsign checkpoint not found: %s — loop disabled", full_path)
+        return
+    model = torch.load(str(full_path), map_location="cpu")
+    model.eval()
+    sign_filter = SignFilter(hold_ms=_settings.handsign_hold_ms)
+    mp_hands = mp.solutions.hands.Hands(
+        static_image_mode=False,
+        max_num_hands=1,
+        min_detection_confidence=0.5,
+    )
+    _handsign_executor = concurrent.futures.ThreadPoolExecutor(
+        max_workers=1, thread_name_prefix="handsign"
+    )
+    loop = asyncio.get_running_loop()
+    interval = 1.0 / _settings.handsign_fps
+
+    def _infer(frame: np.ndarray) -> tuple[int, float, list[dict]]:
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        result = mp_hands.process(rgb)
+        hands_meta: list[dict] = []
+        if not result.multi_hand_landmarks:
+            return -1, 0.0, hands_meta
+        lm = result.multi_hand_landmarks[0]
+        h, w = frame.shape[:2]
+        xs = [p.x * w for p in lm.landmark]
+        ys = [p.y * h for p in lm.landmark]
+        x1 = max(0, int(min(xs)) - 10)
+        y1 = max(0, int(min(ys)) - 10)
+        x2 = min(w, int(max(xs)) + 10)
+        y2 = min(h, int(max(ys)) + 10)
+        crop = frame[y1:y2, x1:x2]
+        if crop.size == 0:
+            return -1, 0.0, hands_meta
+        inp = T.Compose([T.ToPILImage(), T.Resize((64, 64)), T.ToTensor()])(
+            crop
+        ).unsqueeze(0)
+        with torch.no_grad():
+            out = model(inp)
+            probs = torch.softmax(out, dim=1)
+            conf, idx = probs.max(dim=1)
+        conf_val = conf.item()
+        idx_val = int(idx.item())
+        sign_name = SIGN_CLASSES[idx_val] if conf_val >= _settings.handsign_threshold else None
+        hands_meta = [
+            {
+                "box": [x1 / w, y1 / h, (x2 - x1) / w, (y2 - y1) / h],
+                "sign": sign_name,
+                "confidence": round(conf_val, 4),
+            }
+        ]
+        return idx_val, conf_val, hands_meta
+
+    logger.info("Handsign loop starting at %d FPS", _settings.handsign_fps)
+    while True:
+        t0 = time.monotonic()
+        frame = _latest_raw_frame
+        if frame is not None:
+            sign_idx, _confidence, hands_meta = await loop.run_in_executor(
+                _handsign_executor, _infer, frame
+            )
+            if _streaming:
+                payload: dict = {"type": "hand_meta", "hands": hands_meta}
+                if _metadata_queue.full():
+                    try:
+                        _metadata_queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        pass
+                try:
+                    _metadata_queue.put_nowait(payload)
+                except asyncio.QueueFull:
+                    pass
+            confirmed = sign_filter.update(
+                sign_idx, SIGN_CLASSES, time.monotonic() * 1000
+            )
+            if confirmed:
+                try:
+                    await _http_client.post(
+                        f"{_settings.backend_url}/api/doors/{_settings.door_id}/handsign/feed",
+                        json={"sign": confirmed, "timestamp": time.time()},
+                        headers={"X-Device-Token": _settings.device_token},
+                        timeout=5,
+                    )
+                except Exception as exc:
+                    logger.warning("Handsign feed POST failed: %s", exc)
+        elapsed = time.monotonic() - t0
+        await asyncio.sleep(max(0.0, interval - elapsed))
+
+
 async def main() -> None:
     global _frame_queue, _metadata_queue, _recognize_semaphore, _http_client, _settings
     _settings = load_settings()
@@ -354,7 +474,7 @@ async def main() -> None:
     logger.info("Starting Jetson worker for door %s", _settings.door_id)
     async with httpx.AsyncClient() as client:
         _http_client = client
-        await asyncio.gather(ws_task(), capture_task(), detect_task())
+        await asyncio.gather(ws_task(), capture_task(), detect_task(), handsign_task())
 
 
 if __name__ == "__main__":
