@@ -1251,3 +1251,59 @@ async def test_per_door_delete_permission_does_not_grant_update(
     )
 
     assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_recognize_both_mode_face_ok_does_not_unlock_alone(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    seeded_roles: dict[str, Role],
+) -> None:
+    """In both mode, face match alone must not open the door."""
+    from main import app
+    from src.faces.engine import get_engine
+    from src.handsign.session import DoorSessionStore
+    import src.doors.router as doors_router
+
+    engine = MagicMock()
+    engine.detect_and_embed.return_value = MOCK_EMBEDDING
+    published_doors: list[Door] = []
+
+    async def fake_publish(door: Door) -> None:
+        published_doors.append(door)
+
+    store = DoorSessionStore()
+    app.dependency_overrides[get_engine] = lambda: engine
+    monkeypatch.setattr(doors_router, "publish_door_unlock", fake_publish)
+    monkeypatch.setattr(doors_router, "get_session_store", lambda: store)
+
+    user, _token = await _create_admin_with_token(database_session)
+    await add_face_vector(user.id, MOCK_EMBEDDING, database_session)
+    door = Door(
+        name=f"both_{uuid4().hex[:8]}",
+        mqtt_id=f"both_{uuid4().hex[:8]}",
+        auth_mode="both",
+    )
+    database_session.add(door)
+    await database_session.commit()
+    await database_session.refresh(door)
+    database_session.add(
+        UserDoorPermission(user_id=user.id, door_id=door.id, action=DOOR_UNLOCK_ACTION)
+    )
+    await database_session.commit()
+    token = await _create_device(database_session, door)
+
+    response = await client.post(
+        f"/api/doors/{door.id}/recognize",
+        files={"image": ("frame.jpg", _make_jpeg_bytes(), "image/jpeg")},
+        headers=_device_auth(token),
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["matched"] is True
+    assert data["door_opened"] is False
+    assert not published_doors
+    door_session = store.get_or_create(door.id)
+    assert door_session.face_ok is True
