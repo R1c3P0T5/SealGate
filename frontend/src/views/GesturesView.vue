@@ -1,21 +1,25 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { Button, Card, State, Table } from '@/lib'
+import { Alert, Button, Card, Skeleton, State, Table } from '@/lib'
 import type { TableColumn } from '@/lib'
 import GesturesLayout from '@/layouts/GesturesLayout.vue'
-import { useGesturesStore } from '@/stores/gestures'
+import { listJutsuEndpointApiJutsuGet } from '@/api/sdk.gen'
+import type { JutsuResponse } from '@/api/types.gen'
 
 defineOptions({ name: 'GesturesView' })
 
 const router = useRouter()
-const store = useGesturesStore()
+
+const jutsu = ref<JutsuResponse[]>([])
+const loading = ref(false)
+const error = ref<string | null>(null)
 
 const columns: TableColumn[] = [
   { key: 'name', label: 'Name' },
-  { key: 'steps', label: 'Steps' },
-  { key: 'updated', label: 'Updated' },
+  { key: 'steps', label: 'Signs' },
+  { key: 'created', label: 'Created' },
 ]
 
 function pad(n: number) {
@@ -27,14 +31,39 @@ function formatDate(iso: string) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
+function errorMessage(value: unknown, fallback: string) {
+  if (value && typeof value === 'object' && 'detail' in value) {
+    const detail = (value as { detail?: unknown }).detail
+    if (typeof detail === 'string') return detail
+    if (Array.isArray(detail)) return detail.map(String).join(', ')
+  }
+  return fallback
+}
+
 const rows = computed(() =>
-  store.sequences.map((s) => ({
-    id: s.id,
-    name: s.name,
-    steps: s.steps.length,
-    updated: formatDate(s.updatedAt),
+  jutsu.value.map((j) => ({
+    id: j.id,
+    name: j.name,
+    steps: j.signs.length,
+    created: formatDate(j.created_at),
   })),
 )
+
+async function load() {
+  loading.value = true
+  error.value = null
+  try {
+    const res = await listJutsuEndpointApiJutsuGet({
+      query: { limit: 100 },
+      throwOnError: true,
+    })
+    jutsu.value = res.data.jutsu
+  } catch (err) {
+    error.value = errorMessage(err, 'Could not load seals.')
+  } finally {
+    loading.value = false
+  }
+}
 
 function open(id: string) {
   void router.push({ name: 'gestures-edit', params: { id } })
@@ -43,6 +72,8 @@ function open(id: string) {
 function newSequence() {
   void router.push({ name: 'gestures-new' })
 }
+
+onMounted(load)
 </script>
 
 <template>
@@ -51,13 +82,15 @@ function newSequence() {
       <Button variant="primary" size="sm" @click="newSequence">+ New seal</Button>
     </template>
 
+    <Alert v-if="error" variant="err">{{ error }}</Alert>
+
     <Card>
-      <State
-        v-if="store.sequences.length === 0"
-        variant="empty"
-        title="No seals yet"
-        :center="true"
-      />
+      <div v-if="loading" class="grid gap-2">
+        <Skeleton :height="36" />
+        <Skeleton :height="36" />
+        <Skeleton :height="36" />
+      </div>
+      <State v-else-if="jutsu.length === 0" variant="empty" title="No seals yet" :center="true" />
       <Table
         v-else
         :columns="columns"
