@@ -164,26 +164,19 @@ async def test_feed_handsign_mode_creates_access_log(
 
     from src.access_logs.schemas import AccessLogCreate as _ALC
 
-    created_logs: list[_ALC] = []
+    recorded_creates: list[_ALC] = []
 
     async def mock_publish_door_unlock(door: object) -> None:
         pass
 
-    async def mock_create_access_log(log_create: _ALC, session: object) -> object:
-        created_logs.append(log_create)
-        import datetime
-        import uuid
-        from types import SimpleNamespace
-
-        return SimpleNamespace(
-            id=uuid.uuid4(),
-            door_id=door_id,
-            user_id=None,
-            username=None,
-            confidence=None,
-            door_opened=True,
-            timestamp=datetime.datetime.now(tz=datetime.timezone.utc),
-        )
+    async def mock_record_access_event(
+        log_create: _ALC,
+        session: object,
+        broker: object,
+        logger: object,
+    ) -> object:
+        recorded_creates.append(log_create)
+        return None
 
     monkeypatch.setattr(
         devices_auth, "get_device_by_token_hash", get_device_by_token_hash
@@ -191,7 +184,9 @@ async def test_feed_handsign_mode_creates_access_log(
     monkeypatch.setattr(devices_auth, "get_door_by_id", get_door_by_id)
     monkeypatch.setattr(handsign_router, "get_registry", lambda: registry)
     monkeypatch.setattr(doors_mqtt, "publish_door_unlock", mock_publish_door_unlock)
-    monkeypatch.setattr(handsign_router, "create_access_log", mock_create_access_log)
+    monkeypatch.setattr(
+        handsign_router, "record_access_event", mock_record_access_event
+    )
 
     response = await client.post(
         f"/api/doors/{door_id}/handsign/feed",
@@ -202,7 +197,7 @@ async def test_feed_handsign_mode_creates_access_log(
     assert response.status_code == 200
     body = response.json()
     assert body["completed"] is True
-    assert len(created_logs) == 1
-    log = created_logs[0]
-    assert log.door_id == door_id
-    assert log.door_opened is True
+    assert len(recorded_creates) == 1
+    log_create = recorded_creates[0]
+    assert log_create.door_id == door_id
+    assert log_create.door_opened is True

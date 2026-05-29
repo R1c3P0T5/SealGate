@@ -5,8 +5,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.access_logs.schemas import AccessLogCreate, AccessLogResponse
-from src.access_logs.service import create_access_log
+from src.access_logs.schemas import AccessLogCreate
+from src.access_logs.service import record_access_event
 from src.auth.dependencies import require_permission
 from src.core.database import SessionDep
 from src.devices.auth import DeviceAuthError, get_device_door
@@ -255,26 +255,18 @@ async def handsign_feed_endpoint(
             except Exception as exc:
                 logger.warning("MQTT publish failed for door %s: %s", door.id, exc)
             if door_unlocked:
-                try:
-                    access_log = await create_access_log(
-                        AccessLogCreate(
-                            door_id=door.id,
-                            user_id=None,
-                            username=None,
-                            confidence=None,
-                            door_opened=True,
-                        ),
-                        session,
-                    )
-                    await request.app.state.access_event_broker.publish(
-                        AccessLogResponse.model_validate(access_log)
-                    )
-                except Exception:
-                    await session.rollback()
-                    logger.warning(
-                        "Failed to write access log for handsign unlock on door %s",
-                        door.id,
-                    )
+                await record_access_event(
+                    AccessLogCreate(
+                        door_id=door.id,
+                        user_id=None,
+                        username=None,
+                        confidence=None,
+                        door_opened=True,
+                    ),
+                    session,
+                    request.app.state.access_event_broker,
+                    logger,
+                )
         elif door.auth_mode == "both":
             try:
                 store = get_session_store()

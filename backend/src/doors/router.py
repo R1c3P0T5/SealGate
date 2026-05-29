@@ -13,8 +13,8 @@ from fastapi import (
     status,
 )
 
-from src.access_logs.schemas import AccessLogCreate, AccessLogResponse
-from src.access_logs.service import create_access_log
+from src.access_logs.schemas import AccessLogCreate
+from src.access_logs.service import record_access_event
 from src.auth.dependencies import get_current_user, require_permission
 from src.core.config import get_settings
 from src.core.database import SessionDep
@@ -159,7 +159,9 @@ async def update_door_endpoint(
     door = await update_door(door_id, request, session)
     from src.handsign.router import _reload_door_registry, _registry
 
-    if _registry is not None:
+    if _registry is not None and (
+        request.auth_mode is not None or _registry.get(door_id) is not None
+    ):
         await _reload_door_registry(door_id, session)
     return _to_response(door)
 
@@ -212,26 +214,20 @@ async def unlock_door_endpoint(
         door_opened=True,
         access_log_id=None,
     )
-    try:
-        access_log = await create_access_log(
-            AccessLogCreate(
-                door_id=door.id,
-                user_id=current_user.id,
-                username=current_user.username,
-                confidence=None,
-                door_opened=True,
-            ),
-            session,
-        )
-    except Exception:
-        await session.rollback()
-        logger.exception("Failed to write access log for manual door unlock")
-        return response
-
-    response.access_log_id = access_log.id
-    await request.app.state.access_event_broker.publish(
-        AccessLogResponse.model_validate(access_log)
+    access_log = await record_access_event(
+        AccessLogCreate(
+            door_id=door.id,
+            user_id=current_user.id,
+            username=current_user.username,
+            confidence=None,
+            door_opened=True,
+        ),
+        session,
+        request.app.state.access_event_broker,
+        logger,
     )
+    if access_log is not None:
+        response.access_log_id = access_log.id
     return response
 
 
@@ -321,29 +317,23 @@ async def recognize_door_endpoint(
         door_opened=door_opened,
         access_log_id=None,
     )
-    try:
-        access_log = await create_access_log(
-            AccessLogCreate(
-                door_id=door.id,
-                user_id=recognition.user_id,
-                username=recognition.username,
-                confidence=recognition.confidence,
-                door_opened=door_opened,
-            ),
-            session,
-        )
-    except Exception as exc:
-        await session.rollback()
-        logger.exception("Failed to write access log for door recognition")
-        if door_opened:
-            return response
+    access_log = await record_access_event(
+        AccessLogCreate(
+            door_id=door.id,
+            user_id=recognition.user_id,
+            username=recognition.username,
+            confidence=recognition.confidence,
+            door_opened=door_opened,
+        ),
+        session,
+        request.app.state.access_event_broker,
+        logger,
+    )
+    if access_log is None and not door_opened:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to record door recognition event",
-        ) from exc
-
-    response.access_log_id = access_log.id
-    await request.app.state.access_event_broker.publish(
-        AccessLogResponse.model_validate(access_log)
-    )
+        )
+    if access_log is not None:
+        response.access_log_id = access_log.id
     return response
