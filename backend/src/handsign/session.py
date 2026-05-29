@@ -1,4 +1,6 @@
+import logging
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from uuid import UUID
 
@@ -38,3 +40,26 @@ class DoorSessionStore:
 
     def clear(self, door_id: UUID) -> None:
         self._sessions.pop(door_id, None)
+
+
+async def maybe_unlock_both(
+    door_id: UUID,
+    flag: str,
+    store: "DoorSessionStore",
+    publish_fn: Callable[[], Awaitable[None]],
+    logger: logging.Logger,
+) -> bool:
+    """Set flag on the door session; if both flags are set, call publish_fn and clear.
+
+    Returns True if the door was unlocked, False otherwise.
+    """
+    session = store.get_or_create(door_id)
+    setattr(session, flag, True)
+    if session.is_complete():
+        try:
+            await publish_fn()
+            store.clear(door_id)
+            return True
+        except Exception as exc:
+            logger.warning("MQTT publish failed (both mode) door %s: %s", door_id, exc)
+    return False

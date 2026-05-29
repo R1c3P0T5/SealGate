@@ -51,6 +51,7 @@ from src.doors.service import (
 from src.faces.engine import EngineDep
 from src.faces.service import recognize_image_bytes
 from src.handsign.router import get_session_store
+from src.handsign.session import maybe_unlock_both
 from src.users.models import User
 
 
@@ -283,18 +284,19 @@ async def recognize_door_endpoint(
                     "MQTT publish failed for door %s during recognition: %s", door.id, exc
                 )
         elif door.auth_mode == "both":
-            door_session = get_session_store().get_or_create(door.id)
-            door_session.face_ok = True
-            if door_session.is_complete():
-                try:
-                    await publish_door_unlock(door)
-                    door_opened = True
-                    get_session_store().clear(door.id)
-                except Exception as exc:
-                    logger.warning(
-                        "MQTT publish failed (both mode) door %s: %s", door.id, exc
-                    )
-        # auth_mode == "handsign": face recognition alone does not unlock
+            door_opened = await maybe_unlock_both(
+                door.id,
+                "face_ok",
+                get_session_store(),
+                lambda: publish_door_unlock(door),
+                logger,
+            )
+        elif door.auth_mode == "handsign":
+            pass  # face recognition alone does not unlock
+        else:
+            logger.warning(
+                "Door %s has unknown auth_mode %r, skipping unlock", door.id, door.auth_mode
+            )
 
     response = DoorRecognizeResponse(
         matched=True,
