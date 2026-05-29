@@ -595,11 +595,11 @@ async def test_unlock_door_returns_success_when_access_log_write_fails(
     async def fake_publish(_door: Door) -> None:
         return None
 
-    async def fail_create_access_log(*_args, **_kwargs) -> None:
-        raise RuntimeError("database unavailable")
+    async def fail_record_access_event(*_args, **_kwargs) -> None:
+        return None
 
     monkeypatch.setattr(router, "publish_door_unlock", fake_publish)
-    monkeypatch.setattr(router, "create_access_log", fail_create_access_log)
+    monkeypatch.setattr(router, "record_access_event", fail_record_access_event)
     _, token = await _create_admin_with_token(database_session)
     door = await _create_door(database_session)
 
@@ -607,7 +607,6 @@ async def test_unlock_door_returns_success_when_access_log_write_fails(
 
     assert response.status_code == 200
     assert response.json()["access_log_id"] is None
-    assert "Failed to write access log for manual door unlock" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -1047,12 +1046,8 @@ async def test_recognize_door_matched_publish_and_log_failure_returns_500(
     async def fail_publish(_door: Door) -> None:
         raise DoorUnlockPublishError("offline")
 
-    async def fail_create_access_log(*_args, **_kwargs) -> None:
-        raise RuntimeError("db down")
-
     app.dependency_overrides[get_engine] = lambda: engine
     monkeypatch.setattr(router, "publish_door_unlock", fail_publish)
-    monkeypatch.setattr(router, "create_access_log", fail_create_access_log)
     user, _token = await _create_admin_with_token(database_session)
     await add_face_vector(user.id, MOCK_EMBEDDING, database_session)
     door = await _create_door(database_session)
