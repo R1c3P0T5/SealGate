@@ -1232,6 +1232,171 @@ async def test_per_door_delete_permission_does_not_grant_update(
 
 
 @pytest.mark.asyncio
+async def test_create_door_returns_auth_mode_in_response(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
+    _, token = await _create_admin_with_token(database_session)
+
+    response = await client.post(
+        "/api/doors",
+        json={
+            "name": "Handsign Entry",
+            "mqtt_id": "handsign-entry",
+            "auth_mode": "handsign",
+        },
+        headers=_auth(token),
+    )
+
+    assert response.status_code == 201
+    assert response.json()["auth_mode"] == "handsign"
+
+
+@pytest.mark.asyncio
+async def test_get_door_returns_auth_mode(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    test_user: User,
+) -> None:
+    door = Door(
+        name=f"both_{uuid4().hex[:8]}",
+        mqtt_id=f"both_{uuid4().hex[:8]}",
+        auth_mode="both",
+    )
+    database_session.add(door)
+    await database_session.commit()
+    await database_session.refresh(door)
+
+    response = await client.get(
+        f"/api/doors/{door.id}",
+        headers=_auth(create_access_token(test_user.id)),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["auth_mode"] == "both"
+
+
+@pytest.mark.asyncio
+async def test_create_door_rejects_invalid_auth_mode(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
+    _, token = await _create_admin_with_token(database_session)
+
+    response = await client.post(
+        "/api/doors",
+        json={
+            "name": "Bad Auth Door",
+            "mqtt_id": "bad-auth-door",
+            "auth_mode": "badge",
+        },
+        headers=_auth(token),
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_update_door_auth_mode(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
+    _, token = await _create_admin_with_token(database_session)
+    door = await _create_door(database_session)
+
+    response = await client.put(
+        f"/api/doors/{door.id}",
+        json={"auth_mode": "handsign"},
+        headers=_auth(token),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["auth_mode"] == "handsign"
+
+
+@pytest.mark.asyncio
+async def test_update_door_rejects_invalid_auth_mode(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    seeded_roles: dict[str, Role],
+) -> None:
+    _, token = await _create_admin_with_token(database_session)
+    door = await _create_door(database_session)
+
+    response = await client.put(
+        f"/api/doors/{door.id}",
+        json={"auth_mode": "fingerprint"},
+        headers=_auth(token),
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_recognize_handsign_mode_face_match_does_not_unlock(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    seeded_roles: dict[str, Role],
+) -> None:
+    """In handsign mode, face match alone must not open the door."""
+    from main import app
+    from src.faces.engine import get_engine
+    import src.doors.router as doors_router
+
+    engine = MagicMock()
+    engine.detect_and_embed.return_value = MOCK_EMBEDDING
+    published_doors: list[Door] = []
+
+    async def fake_publish(door: Door) -> None:
+        published_doors.append(door)
+
+    broker = _FakeAccessEventBroker()
+    app.dependency_overrides[get_engine] = lambda: engine
+    monkeypatch.setattr(doors_router, "publish_door_unlock", fake_publish)
+    monkeypatch.setattr(app.state, "access_event_broker", broker)
+    user, _token = await _create_admin_with_token(database_session)
+    await add_face_vector(user.id, MOCK_EMBEDDING, database_session)
+    door = Door(
+        name=f"hs_{uuid4().hex[:8]}",
+        mqtt_id=f"hs_{uuid4().hex[:8]}",
+        auth_mode="handsign",
+    )
+    database_session.add(door)
+    await database_session.commit()
+    await database_session.refresh(door)
+    database_session.add(
+        UserDoorPermission(user_id=user.id, door_id=door.id, action=DOOR_UNLOCK_ACTION)
+    )
+    await database_session.commit()
+    token = await _create_device(database_session, door)
+
+    response = await client.post(
+        f"/api/doors/{door.id}/recognize",
+        files={"image": ("frame.jpg", _make_jpeg_bytes(), "image/jpeg")},
+        headers=_device_auth(token),
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["matched"] is True
+    assert data["door_opened"] is False
+    assert not published_doors
+    logs = list(
+        (
+            await database_session.exec(
+                select(AccessLog).where(AccessLog.door_id == door.id)
+            )
+        ).all()
+    )
+    assert len(logs) == 1
+    assert logs[0].door_opened is False
+
+
+@pytest.mark.asyncio
 async def test_recognize_both_mode_face_ok_does_not_unlock_alone(
     client: AsyncClient,
     database_session: AsyncSession,

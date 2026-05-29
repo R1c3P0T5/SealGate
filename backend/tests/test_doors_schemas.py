@@ -69,3 +69,53 @@ def test_door_create_request_rejects_invalid_mqtt_id() -> None:
 
     with pytest.raises(ValidationError):
         DoorCreateRequest(name="Test", mqtt_id="Invalid ID!")
+
+
+def test_door_create_request_default_auth_mode_is_face() -> None:
+    from src.doors.schemas import DoorCreateRequest
+
+    req = DoorCreateRequest(name="Test", mqtt_id="test-door")
+
+    assert req.auth_mode == "face"
+
+
+def test_door_create_request_accepts_all_auth_modes() -> None:
+    from src.doors.schemas import DoorCreateRequest
+
+    for mode in ("face", "handsign", "both"):
+        req = DoorCreateRequest(name="Test", mqtt_id="test-door", auth_mode=mode)
+        assert req.auth_mode == mode
+
+
+def test_door_create_request_rejects_invalid_auth_mode() -> None:
+    from pydantic import ValidationError
+
+    from src.doors.schemas import DoorCreateRequest
+
+    with pytest.raises(ValidationError):
+        DoorCreateRequest(name="Test", mqtt_id="test-door", auth_mode="fingerprint")  # type: ignore[arg-type]
+
+
+def test_door_update_request_auth_mode_defaults_to_none() -> None:
+    from src.doors.schemas import DoorUpdateRequest
+
+    req = DoorUpdateRequest()
+
+    assert req.auth_mode is None
+
+
+def test_door_update_request_accepts_valid_auth_modes() -> None:
+    from src.doors.schemas import DoorUpdateRequest
+
+    for mode in ("face", "handsign", "both"):
+        req = DoorUpdateRequest(auth_mode=mode)
+        assert req.auth_mode == mode
+
+
+def test_door_update_request_rejects_invalid_auth_mode() -> None:
+    from pydantic import ValidationError
+
+    from src.doors.schemas import DoorUpdateRequest
+
+    with pytest.raises(ValidationError):
+        DoorUpdateRequest(auth_mode="badge")  # type: ignore[arg-type]
