@@ -449,7 +449,7 @@ async def handsign_task() -> None:
                 except asyncio.QueueFull:
                     pass
             confirmed = sign_filter.update(
-                sign_idx, SIGN_CLASSES, time.monotonic() * 1000
+                sign_idx, SIGN_CLASSES, time.monotonic()
             )
             if confirmed:
                 try:
