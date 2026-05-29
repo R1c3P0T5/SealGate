@@ -1,10 +1,12 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
 
 _MQTT_ID_PATTERN = r"^[a-z0-9][a-z0-9_-]*$"
+AuthMode = Literal["face", "handsign", "both"]
 
 
 class DoorCreateRequest(BaseModel):
@@ -19,6 +21,10 @@ class DoorCreateRequest(BaseModel):
     )
     is_active: bool = Field(
         default=True, description="Whether the door is operational."
+    )
+    auth_mode: AuthMode = Field(
+        default="face",
+        description="Authentication method required to unlock this door.",
     )
 
 
@@ -36,6 +42,9 @@ class DoorUpdateRequest(BaseModel):
         default=None, max_length=256, description="Replacement location."
     )
     is_active: bool | None = Field(default=None, description="Replacement active flag.")
+    auth_mode: AuthMode | None = Field(
+        default=None, description="Replacement authentication method."
+    )
 
 
 class DoorResponse(BaseModel):
@@ -44,6 +53,9 @@ class DoorResponse(BaseModel):
     mqtt_id: str | None = Field(default=None, description="MQTT topic slug.")
     location: str | None = Field(default=None, description="Physical location.")
     is_active: bool = Field(description="Whether the door is operational.")
+    auth_mode: AuthMode = Field(
+        description="Authentication method required to unlock this door."
+    )
     created_at: datetime = Field(description="UTC timestamp when the door was created.")
 
     model_config = {"from_attributes": True}

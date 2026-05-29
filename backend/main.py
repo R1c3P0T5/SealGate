@@ -61,7 +61,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             ).all()
         )
         for door in handsign_doors:
-            jutsu_rows = await get_door_jutsu(door.id, session)
+            try:
+                jutsu_rows = await get_door_jutsu(door.id, session)
+            except Exception:
+                logger.warning("Failed to load jutsu for door %s, skipping", door.id)
+                continue
             jutsu_dict: dict[str, list[str]] = {}
             for j in jutsu_rows:
                 unknown = [s for s in j.signs if s not in SIGN_KANJI]
