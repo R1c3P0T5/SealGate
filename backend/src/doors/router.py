@@ -156,6 +156,10 @@ async def update_door_endpoint(
     ],
 ) -> DoorResponse:
     door = await update_door(door_id, request, session)
+    from src.handsign.router import _reload_door_registry, _registry
+
+    if _registry is not None:
+        await _reload_door_registry(door_id, session)
     return _to_response(door)
 
 
