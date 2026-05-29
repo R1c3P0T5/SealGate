@@ -22,7 +22,10 @@ class HandsignFSMRegistry:
         fsm = JutsuFSM(
             on_jutsu=_on_jutsu, jutsu=jutsu_dict, gap_ms=3000, cooldown_ms=5000
         )
-        self._states[door_id] = HandsignDoorState(fsm=fsm)
+        # Preserve existing lock so in-flight feed requests aren't orphaned
+        existing = self._states.get(door_id)
+        lock = existing.lock if existing is not None else asyncio.Lock()
+        self._states[door_id] = HandsignDoorState(fsm=fsm, lock=lock)
 
     def unload(self, door_id: UUID) -> None:
         self._states.pop(door_id, None)
