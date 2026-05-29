@@ -108,6 +108,9 @@ _latest_raw_frame: np.ndarray | None = None
 _settings: WorkerSettings
 _handsign_executor: concurrent.futures.ThreadPoolExecutor | None = None
 
+if _HANDSIGN_AVAILABLE:
+    _HANDSIGN_TRANSFORM = T.Compose([T.ToPILImage(), T.Resize((64, 64)), T.ToTensor()])
+
 
 def _drain_queue(queue: asyncio.Queue[Any]) -> None:
     while not queue.empty():
@@ -410,16 +413,16 @@ async def handsign_task() -> None:
         crop = frame[y1:y2, x1:x2]
         if crop.size == 0:
             return -1, 0.0, hands_meta
-        inp = T.Compose([T.ToPILImage(), T.Resize((64, 64)), T.ToTensor()])(
-            crop
-        ).unsqueeze(0)
+        inp = _HANDSIGN_TRANSFORM(crop).unsqueeze(0)
         with torch.no_grad():
             out = model(inp)
             probs = torch.softmax(out, dim=1)
             conf, idx = probs.max(dim=1)
         conf_val = conf.item()
         idx_val = int(idx.item())
-        sign_name = SIGN_CLASSES[idx_val] if conf_val >= _settings.handsign_threshold else None
+        if conf_val < _settings.handsign_threshold:
+            return -1, conf_val, hands_meta
+        sign_name = SIGN_CLASSES[idx_val]
         hands_meta = [
             {
                 "box": [x1 / w, y1 / h, (x2 - x1) / w, (y2 - y1) / h],
