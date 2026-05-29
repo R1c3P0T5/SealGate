@@ -25,7 +25,7 @@ from src.handsign.service import (
     unassign_jutsu_from_door,
     update_jutsu,
 )
-from src.handsign.session import DoorSessionStore
+from src.handsign.session import DoorSessionStore, maybe_unlock_both
 from src.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -199,16 +199,12 @@ async def handsign_feed_endpoint(
             except Exception as exc:
                 logger.warning("MQTT publish failed for door %s: %s", door.id, exc)
         elif door.auth_mode == "both":
-            store = get_session_store()
-            door_session = store.get_or_create(door_id)
-            door_session.handsign_ok = True
-            if door_session.is_complete():
-                try:
-                    await publish_door_unlock(door)
-                    store.clear(door_id)
-                except Exception as exc:
-                    logger.warning(
-                        "MQTT publish failed (both mode) door %s: %s", door.id, exc
-                    )
+            await maybe_unlock_both(
+                door_id,
+                "handsign_ok",
+                get_session_store(),
+                lambda: publish_door_unlock(door),
+                logger,
+            )
 
     return HandsignFeedResponse(step=step, total=total, completed=completed)
