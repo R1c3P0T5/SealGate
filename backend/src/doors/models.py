@@ -1,6 +1,7 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
+from sqlalchemy import CheckConstraint
 from sqlmodel import Field, SQLModel
 
 from src.core.utils import utc_now_naive
@@ -14,6 +15,11 @@ class Door(SQLModel, table=True):
     is_active: bool = Field(default=True, nullable=False)
     auth_mode: str = Field(default="face", nullable=False, max_length=16)
     created_at: datetime = Field(default_factory=utc_now_naive, nullable=False)
+    __table_args__ = (
+        CheckConstraint(
+            "auth_mode IN ('face', 'handsign', 'both')", name="door_auth_mode_check"
+        ),
+    )
 
 
 class UserDoorPermission(SQLModel, table=True):
