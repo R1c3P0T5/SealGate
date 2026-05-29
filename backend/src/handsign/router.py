@@ -1,5 +1,5 @@
 import logging
-from typing import Annotated
+from typing import Annotated, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
@@ -196,6 +196,11 @@ async def handsign_feed_endpoint(
     request: Request,
     session: SessionDep,
 ) -> HandsignFeedResponse:
+    if request.headers.get("x-device-token") is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing device token",
+        )
     try:
         door = await get_device_door(request, door_id, session)
     except DeviceAuthError as exc:
@@ -222,12 +227,7 @@ async def handsign_feed_endpoint(
         if current is None:
             raise HTTPException(status_code=503, detail="FSM not loaded for this door")
 
-        def _on_complete(name: str) -> None:
-            nonlocal completed_name
-            completed_name = name
-
-        current.fsm.on_complete = _on_complete
-        current.fsm.feed(body.sign, body.timestamp)
+        completed_name = current.fsm.feed(body.sign, body.timestamp)
         progress = current.fsm.leading_jutsu()
 
     step = progress[1] if progress else 0
@@ -238,10 +238,32 @@ async def handsign_feed_endpoint(
         from src.doors.mqtt import publish_door_unlock
 
         if door.auth_mode == "handsign":
+            door_unlocked = False
             try:
                 await publish_door_unlock(door)
+                door_unlocked = True
             except Exception as exc:
                 logger.warning("MQTT publish failed for door %s: %s", door.id, exc)
+            if door_unlocked:
+                try:
+                    access_log = await create_access_log(
+                        AccessLogCreate(
+                            door_id=door.id,
+                            user_id=None,
+                            username=None,
+                            confidence=None,
+                            door_opened=True,
+                        ),
+                        session,
+                    )
+                    await request.app.state.access_event_broker.publish(
+                        AccessLogResponse.model_validate(access_log)
+                    )
+                except Exception:
+                    logger.warning(
+                        "Failed to write access log for handsign unlock on door %s",
+                        door.id,
+                    )
         elif door.auth_mode == "both":
             unlocked = await try_unlock_both(
                 door_id,
@@ -270,5 +292,18 @@ async def handsign_feed_endpoint(
                         "Failed to write access log for both-mode unlock on door %s",
                         door.id,
                     )
+
+    from src.camera.broker import CameraFrameBroker
+
+    progress_payload: dict[str, object] = {
+        "type": "handsign_progress",
+        "step": step,
+        "total": total,
+        "completed": completed,
+    }
+    if completed_name is not None:
+        progress_payload["jutsu"] = completed_name
+    camera_broker = cast(CameraFrameBroker, request.app.state.camera_frame_broker)
+    await camera_broker.relay_metadata(str(door_id), progress_payload)
 
     return HandsignFeedResponse(step=step, total=total, completed=completed)
