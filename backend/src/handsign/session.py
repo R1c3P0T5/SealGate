@@ -2,6 +2,7 @@ import logging
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from typing import Literal
 from uuid import UUID
 
 _SESSION_WINDOW_SECONDS = 60.0
@@ -42,20 +43,26 @@ class DoorSessionStore:
         self._sessions.pop(door_id, None)
 
 
-async def maybe_unlock_both(
+async def try_unlock_both(
     door_id: UUID,
-    flag: str,
+    auth_factor: Literal["face_ok", "handsign_ok"],
     store: "DoorSessionStore",
     publish_fn: Callable[[], Awaitable[None]],
     logger: logging.Logger,
 ) -> bool:
-    """Set flag on the door session; if both flags are set, call publish_fn and clear.
+    """Record one auth factor; if both are satisfied, call publish_fn and clear.
 
-    Returns True if the door was unlocked, False otherwise.
+    publish_fn is the MQTT unlock coroutine. It is called only when both
+    face_ok and handsign_ok are set on the session for this door.
+
+    The session is cleared on both success and failure so a publish error
+    does not leave the door permanently in an unlockable state.
+
+    Returns True if the door was unlocked this call, False otherwise.
     """
-    session = store.get_or_create(door_id)
-    setattr(session, flag, True)
-    if session.is_complete():
+    door_session = store.get_or_create(door_id)
+    setattr(door_session, auth_factor, True)
+    if door_session.is_complete():
         try:
             await publish_fn()
             store.clear(door_id)

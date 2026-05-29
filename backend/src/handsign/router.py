@@ -20,16 +20,16 @@ from src.handsign.schemas import (
     JutsuUpdateRequest,
 )
 from src.handsign.service import (
-    assign_jutsu_to_door,
+    assign_door_jutsu,
     create_jutsu,
     delete_jutsu,
     get_door_jutsu,
     get_jutsu_by_id,
     list_jutsu,
-    unassign_jutsu_from_door,
+    unassign_door_jutsu,
     update_jutsu,
 )
-from src.handsign.session import DoorSessionStore, maybe_unlock_both
+from src.handsign.session import DoorSessionStore, try_unlock_both
 from src.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -84,21 +84,20 @@ async def _reload_door_registry(door_id: UUID, session: AsyncSession) -> None:
         kanji_seq = [SIGN_KANJI[s] for s in j.signs if s in SIGN_KANJI]
         if kanji_seq:
             jutsu_dict[j.name] = kanji_seq
-    valid_jutsu = {name: seq for name, seq in jutsu_dict.items() if seq}
-    if valid_jutsu:
-        _registry.load(door_id, valid_jutsu)
+    if jutsu_dict:
+        _registry.load(door_id, jutsu_dict)
     else:
         _registry.unload(door_id)
 
 
-router = APIRouter(tags=["jutsu"])
+jutsu_router = APIRouter(tags=["jutsu"])
 
 
 def _to_response(jutsu: object) -> JutsuResponse:
     return JutsuResponse.model_validate(jutsu)
 
 
-@router.get("/api/jutsu", response_model=JutsuListResponse)
+@jutsu_router.get("/api/jutsu", response_model=JutsuListResponse)
 async def list_jutsu_endpoint(
     session: SessionDep,
     current_user: Annotated[User, Depends(require_permission("jutsu:read"))],
@@ -111,7 +110,7 @@ async def list_jutsu_endpoint(
     )
 
 
-@router.get("/api/jutsu/{jutsu_id}", response_model=JutsuResponse)
+@jutsu_router.get("/api/jutsu/{jutsu_id}", response_model=JutsuResponse)
 async def get_jutsu_endpoint(
     jutsu_id: Annotated[UUID, Path()],
     session: SessionDep,
@@ -120,7 +119,7 @@ async def get_jutsu_endpoint(
     return _to_response(await get_jutsu_by_id(jutsu_id, session))
 
 
-@router.post(
+@jutsu_router.post(
     "/api/jutsu", response_model=JutsuResponse, status_code=status.HTTP_201_CREATED
 )
 async def create_jutsu_endpoint(
@@ -131,7 +130,7 @@ async def create_jutsu_endpoint(
     return _to_response(await create_jutsu(request, session))
 
 
-@router.put("/api/jutsu/{jutsu_id}", response_model=JutsuResponse)
+@jutsu_router.put("/api/jutsu/{jutsu_id}", response_model=JutsuResponse)
 async def update_jutsu_endpoint(
     jutsu_id: Annotated[UUID, Path()],
     request: JutsuUpdateRequest,
@@ -141,7 +140,7 @@ async def update_jutsu_endpoint(
     return _to_response(await update_jutsu(jutsu_id, request, session))
 
 
-@router.delete("/api/jutsu/{jutsu_id}", status_code=status.HTTP_204_NO_CONTENT)
+@jutsu_router.delete("/api/jutsu/{jutsu_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_jutsu_endpoint(
     jutsu_id: Annotated[UUID, Path()],
     session: SessionDep,
@@ -150,10 +149,10 @@ async def delete_jutsu_endpoint(
     await delete_jutsu(jutsu_id, session)
 
 
-door_jutsu_router = APIRouter(prefix="/api/doors", tags=["jutsu"])
+handsign_door_router = APIRouter(prefix="/api/doors", tags=["jutsu"])
 
 
-@door_jutsu_router.post(
+@handsign_door_router.post(
     "/{door_id}/jutsu/{jutsu_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Assign jutsu to door",
@@ -164,11 +163,11 @@ async def assign_jutsu_endpoint(
     session: SessionDep,
     current_user: Annotated[User, Depends(require_permission("door:update"))],
 ) -> None:
-    await assign_jutsu_to_door(door_id, jutsu_id, session)
+    await assign_door_jutsu(door_id, jutsu_id, session)
     await _reload_door_registry(door_id, session)
 
 
-@door_jutsu_router.delete(
+@handsign_door_router.delete(
     "/{door_id}/jutsu/{jutsu_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Unassign jutsu from door",
@@ -179,7 +178,7 @@ async def unassign_jutsu_endpoint(
     session: SessionDep,
     current_user: Annotated[User, Depends(require_permission("door:update"))],
 ) -> None:
-    await unassign_jutsu_from_door(door_id, jutsu_id, session)
+    await unassign_door_jutsu(door_id, jutsu_id, session)
     await _reload_door_registry(door_id, session)
 
 
@@ -223,11 +222,11 @@ async def handsign_feed_endpoint(
         if current is None:
             raise HTTPException(status_code=503, detail="FSM not loaded for this door")
 
-        def _on_jutsu_complete(name: str) -> None:
+        def _on_complete(name: str) -> None:
             nonlocal completed_name
             completed_name = name
 
-        current.fsm.on_jutsu = _on_jutsu_complete
+        current.fsm.on_complete = _on_complete
         current.fsm.feed(body.sign, body.timestamp)
         progress = current.fsm.leading_jutsu()
 
@@ -244,7 +243,7 @@ async def handsign_feed_endpoint(
             except Exception as exc:
                 logger.warning("MQTT publish failed for door %s: %s", door.id, exc)
         elif door.auth_mode == "both":
-            unlocked = await maybe_unlock_both(
+            unlocked = await try_unlock_both(
                 door_id,
                 "handsign_ok",
                 get_session_store(),

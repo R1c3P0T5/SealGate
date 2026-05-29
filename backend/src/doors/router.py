@@ -51,7 +51,7 @@ from src.doors.service import (
 from src.faces.engine import EngineDep
 from src.faces.service import recognize_image_bytes
 from src.handsign.router import get_session_store
-from src.handsign.session import maybe_unlock_both
+from src.handsign.session import try_unlock_both
 from src.users.models import User
 
 
@@ -288,7 +288,7 @@ async def recognize_door_endpoint(
                     "MQTT publish failed for door %s during recognition: %s", door.id, exc
                 )
         elif door.auth_mode == "both":
-            door_opened = await maybe_unlock_both(
+            door_opened = await try_unlock_both(
                 door.id,
                 "face_ok",
                 get_session_store(),

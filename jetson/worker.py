@@ -417,9 +417,9 @@ async def handsign_task() -> None:
         with torch.no_grad():
             out = model(inp)
             probs = torch.softmax(out, dim=1)
-            conf, idx = probs.max(dim=1)
-        conf_val = conf.item()
-        idx_val = int(idx.item())
+            _max = probs.max(dim=1)
+        conf_val = _max.values.item()
+        idx_val = int(_max.indices.item())
         if conf_val < _settings.handsign_threshold:
             return -1, conf_val, hands_meta
         sign_name = SIGN_CLASSES[idx_val]
