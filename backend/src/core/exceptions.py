@@ -119,3 +119,23 @@ class DeviceNameAlreadyExistsError(BaseAPIError):
 class DeviceTokenCollisionError(BaseAPIError):
     status_code = 500
     detail = "Could not generate a unique device token"
+
+
+class JutsuNotFoundError(BaseAPIError):
+    status_code = 404
+    detail = "Jutsu not found"
+
+
+class JutsuNameAlreadyExistsError(BaseAPIError):
+    status_code = 400
+    detail = "Jutsu name already in use"
+
+
+class JutsuAlreadyAssignedError(BaseAPIError):
+    status_code = 409
+    detail = "Jutsu already assigned to this door"
+
+
+class JutsuNotAssignedError(BaseAPIError):
+    status_code = 404
+    detail = "Jutsu not assigned to this door"

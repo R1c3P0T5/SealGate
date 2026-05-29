@@ -5,30 +5,15 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.core.exceptions import BaseAPIError
+from src.core.exceptions import (
+    JutsuAlreadyAssignedError,
+    JutsuNameAlreadyExistsError,
+    JutsuNotAssignedError,
+    JutsuNotFoundError,
+)
 from src.doors.service import get_door_by_id
 from src.handsign.models import DoorJutsu, Jutsu
 from src.handsign.schemas import JutsuCreateRequest, JutsuUpdateRequest
-
-
-class JutsuNotFoundError(BaseAPIError):
-    status_code = 404
-    detail = "Jutsu not found"
-
-
-class JutsuNameAlreadyExistsError(BaseAPIError):
-    status_code = 400
-    detail = "Jutsu name already in use"
-
-
-class JutsuAlreadyAssignedError(BaseAPIError):
-    status_code = 409
-    detail = "Jutsu already assigned to this door"
-
-
-class JutsuNotAssignedError(BaseAPIError):
-    status_code = 404
-    detail = "Jutsu not assigned to this door"
 
 
 async def get_jutsu_by_id(jutsu_id: UUID, session: AsyncSession) -> Jutsu:
@@ -105,14 +90,9 @@ async def unassign_jutsu_from_door(
 
 
 async def get_door_jutsu(door_id: UUID, session: AsyncSession) -> list[Jutsu]:
-    links = list(
-        (
-            await session.exec(select(DoorJutsu).where(DoorJutsu.door_id == door_id))
-        ).all()
+    stmt = (
+        select(Jutsu)
+        .join(DoorJutsu, col(DoorJutsu.jutsu_id) == col(Jutsu.id))
+        .where(DoorJutsu.door_id == door_id)
     )
-    jutsu_ids = [lnk.jutsu_id for lnk in links]
-    if not jutsu_ids:
-        return []
-    return list(
-        (await session.exec(select(Jutsu).where(col(Jutsu.id).in_(jutsu_ids)))).all()
-    )
+    return list((await session.exec(stmt)).all())
