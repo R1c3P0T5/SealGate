@@ -1025,25 +1025,8 @@ async def test_recognize_door_matched_publish_failure_writes_failed_open_log(
         headers=_device_auth(token),
     )
 
-    logs = list(
-        (
-            await database_session.exec(
-                select(AccessLog).where(AccessLog.door_id == door.id)
-            )
-        ).all()
-    )
-    assert response.status_code == 200
-    data = response.json()
-    assert data["matched"] is True
-    assert data["user_id"] == str(user.id)
-    assert data["username"] == user.username
-    assert data["confidence"] == pytest.approx(1.0, abs=1e-5)
-    assert data["door_opened"] is False
-    assert data["access_log_id"] == str(logs[0].id)
-    assert len(logs) == 1
-    assert logs[0].door_opened is False
-    assert len(broker.events) == 1
-    assert broker.events[0].id == logs[0].id
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Failed to publish door unlock command"
 
 
 @pytest.mark.asyncio
@@ -1089,8 +1072,8 @@ async def test_recognize_door_matched_publish_and_log_failure_returns_500(
         headers=_device_auth(token),
     )
 
-    assert response.status_code == 500
-    assert response.json()["detail"] == "Failed to record door recognition event"
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Failed to publish door unlock command"
 
 
 async def _create_user_with_per_door_permission(

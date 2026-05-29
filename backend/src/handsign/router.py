@@ -200,7 +200,7 @@ async def handsign_feed_endpoint(
     request: Request,
     session: SessionDep,
 ) -> HandsignFeedResponse:
-    if request.headers.get("x-device-token") is None:
+    if not request.headers.get("x-device-token"):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing device token",
