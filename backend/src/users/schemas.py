@@ -48,6 +48,18 @@ class UserDoorAccessResponse(BaseModel):
     door_ids: list[UUID] = Field(description="Door IDs the user may unlock.")
 
 
+class SetUserJutsuAccessRequest(BaseModel):
+    """Admin-only request to replace per-jutsu ACL for a user."""
+
+    jutsu_ids: list[UUID] = Field(description="Jutsu IDs the user may access.")
+
+
+class UserJutsuAccessResponse(BaseModel):
+    """Jutsu IDs a user has per-resource access to."""
+
+    jutsu_ids: list[UUID] = Field(description="Jutsu IDs the user may access.")
+
+
 class UserResponseFull(BaseModel):
     """Full user information for admin responses."""
 
