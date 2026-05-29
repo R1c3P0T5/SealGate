@@ -73,7 +73,11 @@ async def _reload_door_registry(door_id: UUID, session: AsyncSession) -> None:
         _registry.unload(door_id)
         return
 
-    jutsu_rows = await get_door_jutsu(door_id, session)
+    try:
+        jutsu_rows = await get_door_jutsu(door_id, session)
+    except Exception:
+        logger.warning("Failed to reload jutsu for door %s", door_id)
+        return
     jutsu_dict: dict[str, list[str]] = {}
     for j in jutsu_rows:
         unknown = [s for s in j.signs if s not in SIGN_KANJI]
@@ -214,7 +218,13 @@ async def handsign_feed_endpoint(
             status_code=409, detail="Door auth_mode does not require hand signs"
         )
 
-    registry = get_registry()
+    try:
+        registry = get_registry()
+    except AssertionError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Handsign service not available",
+        )
     door_state = registry.get(door_id)
     if door_state is None:
         raise HTTPException(status_code=503, detail="FSM not loaded for this door")
@@ -260,38 +270,28 @@ async def handsign_feed_endpoint(
                         AccessLogResponse.model_validate(access_log)
                     )
                 except Exception:
+                    await session.rollback()
                     logger.warning(
                         "Failed to write access log for handsign unlock on door %s",
                         door.id,
                     )
         elif door.auth_mode == "both":
-            unlocked = await try_unlock_both(
+            try:
+                store = get_session_store()
+            except AssertionError:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Handsign service not available",
+                )
+            await try_unlock_both(
                 door_id,
                 "handsign_ok",
-                get_session_store(),
+                store,
                 lambda: publish_door_unlock(door),
                 logger,
             )
-            if unlocked:
-                try:
-                    access_log = await create_access_log(
-                        AccessLogCreate(
-                            door_id=door.id,
-                            user_id=None,
-                            username=None,
-                            confidence=None,
-                            door_opened=True,
-                        ),
-                        session,
-                    )
-                    await request.app.state.access_event_broker.publish(
-                        AccessLogResponse.model_validate(access_log)
-                    )
-                except Exception:
-                    logger.warning(
-                        "Failed to write access log for both-mode unlock on door %s",
-                        door.id,
-                    )
+            # access log for both-mode is written by recognize_door_endpoint
+            # (which has user_id); writing an anonymous log here would duplicate it
 
     from src.camera.broker import CameraFrameBroker
 

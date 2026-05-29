@@ -31,6 +31,29 @@ def _metadata_number(value: object) -> float | None:
     return number
 
 
+def _hand_box_payload(value: object) -> dict[str, object] | None:
+    if not isinstance(value, dict):
+        return None
+    x = _metadata_number(value.get("x"))
+    y = _metadata_number(value.get("y"))
+    width = _metadata_number(value.get("width"))
+    height = _metadata_number(value.get("height"))
+    if x is None or y is None or width is None or height is None:
+        return None
+    if x < 0 or y < 0 or width <= 0 or height <= 0:
+        return None
+    if x > 1.0001 or y > 1.0001 or x + width > 1.0001 or y + height > 1.0001:
+        return None
+    box: dict[str, object] = {"x": x, "y": y, "width": width, "height": height}
+    score = _metadata_number(value.get("score"))
+    if score is not None:
+        box["score"] = score
+    sign = value.get("sign")
+    if isinstance(sign, str) and sign:
+        box["sign"] = sign
+    return box
+
+
 def _face_box_payload(value: object) -> dict[str, float] | None:
     if not isinstance(value, dict):
         return None
@@ -64,18 +87,34 @@ def _camera_metadata_payload(text: str) -> dict[str, object] | None:
         return None
     if not isinstance(payload, dict):
         return None
-    if payload.get("type") != "face_boxes":
-        return None
-    raw_faces = payload.get("faces")
-    if not isinstance(raw_faces, list):
-        return None
-    faces: list[dict[str, float]] = []
-    for raw_face in raw_faces:
-        face = _face_box_payload(raw_face)
-        if face is None:
-            continue
-        faces.append(face)
-    return {"type": "face_boxes", "faces": faces}
+
+    msg_type = payload.get("type")
+
+    if msg_type == "face_boxes":
+        raw_faces = payload.get("faces")
+        if not isinstance(raw_faces, list):
+            return None
+        faces: list[dict[str, float]] = []
+        for raw_face in raw_faces:
+            face = _face_box_payload(raw_face)
+            if face is None:
+                continue
+            faces.append(face)
+        return {"type": "face_boxes", "faces": faces}
+
+    if msg_type == "hand_boxes":
+        raw_hands = payload.get("hands")
+        if not isinstance(raw_hands, list):
+            return None
+        hands: list[dict[str, object]] = []
+        for raw_hand in raw_hands:
+            hand = _hand_box_payload(raw_hand)
+            if hand is None:
+                continue
+            hands.append(hand)
+        return {"type": "hand_boxes", "hands": hands}
+
+    return None
 
 
 @router.websocket("/ws/camera/{door_id}/push")

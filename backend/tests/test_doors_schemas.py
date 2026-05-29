@@ -16,6 +16,7 @@ def test_door_response_serializes_correctly() -> None:
         mqtt_id="main-entrance",
         location="Building A",
         is_active=True,
+        auth_mode="face",
         created_at=now,
     )
 
@@ -24,6 +25,7 @@ def test_door_response_serializes_correctly() -> None:
     assert resp.mqtt_id == "main-entrance"
     assert resp.location == "Building A"
     assert resp.is_active is True
+    assert resp.auth_mode == "face"
 
 
 def test_door_list_response_has_pagination_fields() -> None:
@@ -37,6 +39,7 @@ def test_door_list_response_has_pagination_fields() -> None:
             mqtt_id=f"door-{i}",
             location=None,
             is_active=True,
+            auth_mode="face",
             created_at=now,
         )
         for i in range(3)

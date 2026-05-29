@@ -84,6 +84,7 @@ def _to_response(door) -> DoorResponse:
         mqtt_id=door.mqtt_id,
         location=door.location,
         is_active=door.is_active,
+        auth_mode=door.auth_mode,
         created_at=door.created_at,
     )
 
@@ -285,13 +286,22 @@ async def recognize_door_endpoint(
                 door_opened = True
             except (DoorUnlockPublishError, DoorMqttNotConfiguredError) as exc:
                 logger.warning(
-                    "MQTT publish failed for door %s during recognition: %s", door.id, exc
+                    "MQTT publish failed for door %s during recognition: %s",
+                    door.id,
+                    exc,
                 )
         elif door.auth_mode == "both":
+            try:
+                session_store = get_session_store()
+            except AssertionError:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Handsign service not available",
+                )
             door_opened = await try_unlock_both(
                 door.id,
                 "face_ok",
-                get_session_store(),
+                session_store,
                 lambda: publish_door_unlock(door),
                 logger,
             )
@@ -299,7 +309,9 @@ async def recognize_door_endpoint(
             pass  # face recognition alone does not unlock
         else:
             logger.warning(
-                "Door %s has unknown auth_mode %r, skipping unlock", door.id, door.auth_mode
+                "Door %s has unknown auth_mode %r, skipping unlock",
+                door.id,
+                door.auth_mode,
             )
 
     response = DoorRecognizeResponse(

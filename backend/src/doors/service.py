@@ -44,6 +44,7 @@ async def create_door(request: DoorCreateRequest, session: AsyncSession) -> Door
         mqtt_id=request.mqtt_id,
         location=request.location,
         is_active=request.is_active,
+        auth_mode=request.auth_mode,
     )
     session.add(door)
     try:
@@ -70,6 +71,8 @@ async def update_door(
         door.location = request.location
     if request.is_active is not None:
         door.is_active = request.is_active
+    if request.auth_mode is not None:
+        door.auth_mode = request.auth_mode
 
     session.add(door)
     try:
