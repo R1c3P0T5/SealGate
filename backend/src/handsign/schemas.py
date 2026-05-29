@@ -8,16 +8,20 @@ from src.handsign.jutsu import SIGN_KANJI
 _VALID_SIGNS = frozenset(SIGN_KANJI)
 
 
+def _validate_signs(signs: list[str]) -> None:
+    invalid = [s for s in signs if s not in _VALID_SIGNS]
+    if invalid:
+        raise ValueError(
+            f"Invalid signs: {invalid}. Must be one of: {sorted(_VALID_SIGNS)}"
+        )
+
+
 class JutsuCreateRequest(BaseModel):
     name: str = Field(max_length=128)
     signs: list[str] = Field(min_length=1)
 
     def model_post_init(self, __context: object) -> None:
-        invalid = [s for s in self.signs if s not in _VALID_SIGNS]
-        if invalid:
-            raise ValueError(
-                f"Invalid signs: {invalid}. Must be one of: {sorted(_VALID_SIGNS)}"
-            )
+        _validate_signs(self.signs)
 
 
 class JutsuUpdateRequest(BaseModel):
@@ -26,11 +30,7 @@ class JutsuUpdateRequest(BaseModel):
 
     def model_post_init(self, __context: object) -> None:
         if self.signs is not None:
-            invalid = [s for s in self.signs if s not in _VALID_SIGNS]
-            if invalid:
-                raise ValueError(
-                    f"Invalid signs: {invalid}. Must be one of: {sorted(_VALID_SIGNS)}"
-                )
+            _validate_signs(self.signs)
 
 
 class JutsuResponse(BaseModel):
