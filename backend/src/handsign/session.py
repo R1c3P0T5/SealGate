@@ -62,4 +62,5 @@ async def maybe_unlock_both(
             return True
         except Exception as exc:
             logger.warning("MQTT publish failed (both mode) door %s: %s", door_id, exc)
+            store.clear(door_id)
     return False
