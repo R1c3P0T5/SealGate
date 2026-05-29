@@ -286,10 +286,10 @@ async def recognize_door_endpoint(
             door_session = get_session_store().get_or_create(door.id)
             door_session.face_ok = True
             if door_session.is_complete():
-                get_session_store().clear(door.id)
                 try:
                     await publish_door_unlock(door)
                     door_opened = True
+                    get_session_store().clear(door.id)
                 except Exception as exc:
                     logger.warning(
                         "MQTT publish failed (both mode) door %s: %s", door.id, exc

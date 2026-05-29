@@ -3,20 +3,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-_VALID_SIGNS = {
-    "ne",
-    "ushi",
-    "tora",
-    "u",
-    "tatsu",
-    "mi",
-    "uma",
-    "hitsuji",
-    "saru",
-    "tori",
-    "inu",
-    "i",
-}
+from src.handsign.jutsu import SIGN_KANJI
+
+_VALID_SIGNS = frozenset(SIGN_KANJI)
 
 
 class JutsuCreateRequest(BaseModel):
@@ -34,6 +23,14 @@ class JutsuCreateRequest(BaseModel):
 class JutsuUpdateRequest(BaseModel):
     name: str | None = Field(default=None, max_length=128)
     signs: list[str] | None = Field(default=None, min_length=1)
+
+    def model_post_init(self, __context: object) -> None:
+        if self.signs is not None:
+            invalid = [s for s in self.signs if s not in _VALID_SIGNS]
+            if invalid:
+                raise ValueError(
+                    f"Invalid signs: {invalid}. Must be one of: {sorted(_VALID_SIGNS)}"
+                )
 
 
 class JutsuResponse(BaseModel):
