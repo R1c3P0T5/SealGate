@@ -248,7 +248,7 @@ async def recognize_door_endpoint(
     session: SessionDep,
     engine: EngineDep,
 ) -> DoorRecognizeResponse:
-    if request.headers.get("x-device-token") is None:
+    if not request.headers.get("x-device-token"):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing device token",
@@ -285,11 +285,10 @@ async def recognize_door_endpoint(
                 await publish_door_unlock(door)
                 door_opened = True
             except (DoorUnlockPublishError, DoorMqttNotConfiguredError) as exc:
-                logger.warning(
-                    "MQTT publish failed for door %s during recognition: %s",
-                    door.id,
-                    exc,
-                )
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Failed to publish door unlock command",
+                ) from exc
         elif door.auth_mode == "both":
             try:
                 session_store = get_session_store()
