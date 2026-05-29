@@ -5,6 +5,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from src.access_logs.schemas import AccessLogCreate, AccessLogResponse
+from src.access_logs.service import create_access_log
 from src.auth.dependencies import require_permission
 from src.core.database import SessionDep
 from src.devices.auth import DeviceAuthError, get_device_door
@@ -72,9 +74,16 @@ async def _reload_door_registry(door_id: UUID, session: AsyncSession) -> None:
         return
 
     jutsu_rows = await get_door_jutsu(door_id, session)
-    jutsu_dict = {
-        j.name: [SIGN_KANJI[s] for s in j.signs if s in SIGN_KANJI] for j in jutsu_rows
-    }
+    jutsu_dict: dict[str, list[str]] = {}
+    for j in jutsu_rows:
+        unknown = [s for s in j.signs if s not in SIGN_KANJI]
+        if unknown:
+            logger.warning(
+                "Jutsu %r has unknown signs %s, skipping them", j.name, unknown
+            )
+        kanji_seq = [SIGN_KANJI[s] for s in j.signs if s in SIGN_KANJI]
+        if kanji_seq:
+            jutsu_dict[j.name] = kanji_seq
     valid_jutsu = {name: seq for name, seq in jutsu_dict.items() if seq}
     if valid_jutsu:
         _registry.load(door_id, valid_jutsu)
@@ -209,14 +218,18 @@ async def handsign_feed_endpoint(
     completed_name: str | None = None
 
     async with door_state.lock:
+        # Re-fetch in case registry was reloaded between get() and lock acquisition
+        current = registry.get(door_id)
+        if current is None:
+            raise HTTPException(status_code=503, detail="FSM not loaded for this door")
 
         def _on_jutsu_complete(name: str) -> None:
             nonlocal completed_name
             completed_name = name
 
-        door_state.fsm.on_jutsu = _on_jutsu_complete
-        door_state.fsm.feed(body.sign, body.timestamp)
-        progress = door_state.fsm.leading_jutsu()
+        current.fsm.on_jutsu = _on_jutsu_complete
+        current.fsm.feed(body.sign, body.timestamp)
+        progress = current.fsm.leading_jutsu()
 
     step = progress[1] if progress else 0
     total = progress[2] if progress else 0
@@ -231,12 +244,32 @@ async def handsign_feed_endpoint(
             except Exception as exc:
                 logger.warning("MQTT publish failed for door %s: %s", door.id, exc)
         elif door.auth_mode == "both":
-            await maybe_unlock_both(
+            unlocked = await maybe_unlock_both(
                 door_id,
                 "handsign_ok",
                 get_session_store(),
                 lambda: publish_door_unlock(door),
                 logger,
             )
+            if unlocked:
+                try:
+                    access_log = await create_access_log(
+                        AccessLogCreate(
+                            door_id=door.id,
+                            user_id=None,
+                            username=None,
+                            confidence=None,
+                            door_opened=True,
+                        ),
+                        session,
+                    )
+                    await request.app.state.access_event_broker.publish(
+                        AccessLogResponse.model_validate(access_log)
+                    )
+                except Exception:
+                    logger.warning(
+                        "Failed to write access log for both-mode unlock on door %s",
+                        door.id,
+                    )
 
     return HandsignFeedResponse(step=step, total=total, completed=completed)
