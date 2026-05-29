@@ -12,7 +12,8 @@ services:
   frontend:
     image: sealgate-frontend-dev
     build:
-      context: ./frontend
+      context: .
+      dockerfile: frontend/Dockerfile
       target: build
     working_dir: /app
     command: sh -c "pnpm dev --host 0.0.0.0"

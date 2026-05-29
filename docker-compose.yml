@@ -17,7 +17,9 @@ services:
       start_period: 15s
 
   frontend:
-    build: ./frontend
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
     image: ghcr.io/r1c3p0t5/sealgate-frontend:latest
     profiles: [server, full]
     ports:
