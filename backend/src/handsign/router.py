@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, sta
 
 from src.auth.dependencies import require_permission
 from src.core.database import SessionDep
+from src.devices.auth import DeviceAuthError, get_device_door
 from src.handsign.registry import HandsignFSMRegistry
 from src.handsign.schemas import (
     HandsignFeedRequest,
@@ -155,22 +156,13 @@ async def handsign_feed_endpoint(
     request: Request,
     session: SessionDep,
 ) -> HandsignFeedResponse:
-    from src.devices.service import get_device_by_token_hash, hash_device_token
-    from src.doors.service import get_door_by_id
-
-    raw_token = request.headers.get("x-device-token")
-    if not raw_token:
-        raise HTTPException(status_code=401, detail="Missing X-Device-Token header")
-
-    device = await get_device_by_token_hash(hash_device_token(raw_token), session)
-    if device is None or not device.is_active:
-        raise HTTPException(status_code=401, detail="Invalid device token")
-    if device.door_id != door_id:
+    try:
+        door = await get_device_door(request, door_id, session)
+    except DeviceAuthError as exc:
         raise HTTPException(
-            status_code=403, detail="Device not authorized for this door"
-        )
-
-    door = await get_door_by_id(door_id, session)
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=exc.detail,
+        ) from exc
 
     if door.auth_mode not in ("handsign", "both"):
         raise HTTPException(
@@ -211,9 +203,9 @@ async def handsign_feed_endpoint(
             door_session = store.get_or_create(door_id)
             door_session.handsign_ok = True
             if door_session.is_complete():
-                store.clear(door_id)
                 try:
                     await publish_door_unlock(door)
+                    store.clear(door_id)
                 except Exception as exc:
                     logger.warning(
                         "MQTT publish failed (both mode) door %s: %s", door.id, exc

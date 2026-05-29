@@ -50,7 +50,9 @@ def upgrade() -> None:
     op.drop_table("accesslog")
     op.add_column(
         "door",
-        sa.Column("auth_mode", sa.String(length=16), nullable=False),
+        sa.Column(
+            "auth_mode", sa.String(length=16), nullable=False, server_default="face"
+        ),
     )
     op.create_index(op.f("ix_user_role_id"), "user", ["role_id"], unique=False)
     # ### end Alembic commands ###
