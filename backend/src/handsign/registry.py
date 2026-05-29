@@ -16,12 +16,7 @@ class HandsignFSMRegistry:
         self._states: dict[UUID, HandsignDoorState] = {}
 
     def load(self, door_id: UUID, jutsu_dict: dict[str, list[str]]) -> None:
-        def _noop(name: str) -> None:
-            pass  # replaced per-request by the feed endpoint before FSM.feed() is called
-
-        fsm = JutsuFSM(
-            on_complete=_noop, jutsu=jutsu_dict, gap_ms=3000, cooldown_ms=5000
-        )
+        fsm = JutsuFSM(jutsu=jutsu_dict, gap_ms=3000, cooldown_ms=5000)
         # Preserve existing lock so in-flight feed requests aren't orphaned
         existing = self._states.get(door_id)
         lock = existing.lock if existing is not None else asyncio.Lock()

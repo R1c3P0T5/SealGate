@@ -6,8 +6,6 @@ draw_jutsu() and all PIL/cv2/numpy rendering helpers are intentionally omitted
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
 SIGN_KANJI: dict[str, str] = {
     "ne": "子",
     "ushi": "丑",
@@ -69,7 +67,6 @@ class JutsuFSM:
 
     def __init__(
         self,
-        on_complete: Callable[[str], None],
         jutsu: dict[str, list[str]],
         gap_ms: float = 3000,
         cooldown_ms: float = 5000,
@@ -77,7 +74,6 @@ class JutsuFSM:
         self.jutsu = jutsu
         self.gap_ms = gap_ms
         self.cooldown_ms = cooldown_ms
-        self.on_complete = on_complete
         self._step: dict[str, int] = {name: 0 for name in jutsu}
         # Timestamp of the last sign that advanced each jutsu's step counter.
         # Used to expire stale progress after gap_ms of inactivity.
@@ -85,13 +81,14 @@ class JutsuFSM:
         self._fired_at: float = -cooldown_ms  # allow immediate first fire
         self._last_sign: str | None = None
 
-    def feed(self, sign: str, now: float) -> None:
+    def feed(self, sign: str, now: float) -> str | None:
+        """Feed a sign into the FSM and return the completed jutsu name, or None."""
         if sign == self._last_sign:
-            return
+            return None
         self._last_sign = sign
         kanji = SIGN_KANJI.get(sign)
         if kanji is None:
-            return
+            return None
         newly_completed: list[str] = []
         for name, seq in self.jutsu.items():
             if (
@@ -112,7 +109,8 @@ class JutsuFSM:
             winner = max(newly_completed, key=lambda n: len(self.jutsu[n]))
             self._fired_at = now
             self.reset()
-            self.on_complete(winner)
+            return winner
+        return None
 
     def reset(self) -> None:
         for name in self._step:
