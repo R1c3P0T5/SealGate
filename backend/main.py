@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -36,6 +37,8 @@ import src.roles.models as _roles_models  # noqa: F401
 import src.permissions.models as _permissions_models  # noqa: F401
 import src.handsign.models as _handsign_models  # noqa: F401
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
@@ -59,7 +62,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         )
         for door in handsign_doors:
             jutsu_rows = await get_door_jutsu(door.id, session)
-            jutsu_dict = {j.name: [SIGN_KANJI[s] for s in j.signs] for j in jutsu_rows}
+            jutsu_dict: dict[str, list[str]] = {}
+            for j in jutsu_rows:
+                unknown = [s for s in j.signs if s not in SIGN_KANJI]
+                if unknown:
+                    logger.warning(
+                        "Jutsu %r has unknown signs %s, skipping them", j.name, unknown
+                    )
+                kanji_seq = [SIGN_KANJI[s] for s in j.signs if s in SIGN_KANJI]
+                if kanji_seq:
+                    jutsu_dict[j.name] = kanji_seq
             if jutsu_dict:
                 registry.load(door.id, jutsu_dict)
     init_handsign(registry, store)
