@@ -7,9 +7,17 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.access_logs.schemas import AccessLogCreate
 from src.access_logs.service import record_access_event
-from src.auth.dependencies import require_permission
+from src.auth.dependencies import get_current_user, require_permission
 from src.core.database import SessionDep
+from src.core.exceptions import PermissionDeniedError
+from src.core.permissions import user_permissions
 from src.devices.auth import DeviceAuthError, get_device_door
+from src.handsign.access import (
+    JUTSU_DELETE_ACTION,
+    JUTSU_READ_ACTION,
+    JUTSU_UPDATE_ACTION,
+    user_can_manage_jutsu,
+)
 from src.handsign.registry import HandsignFSMRegistry
 from src.handsign.schemas import (
     HandsignFeedRequest,
@@ -97,6 +105,26 @@ async def _reload_door_registry(door_id: UUID, session: AsyncSession) -> None:
 jutsu_router = APIRouter(tags=["jutsu"])
 
 
+def _require_jutsu_permission(rbac_permission: str, jutsu_action: str):
+    """Allow if user has the global RBAC permission OR a per-jutsu ACL entry."""
+
+    async def _dep(
+        jutsu_id: Annotated[UUID, Path()],
+        current_user: Annotated[User, Depends(get_current_user)],
+        session: SessionDep,
+    ) -> User:
+        perms = await user_permissions(current_user, session)
+        if rbac_permission in perms:
+            return current_user
+        if await user_can_manage_jutsu(
+            current_user.id, jutsu_id, jutsu_action, session
+        ):
+            return current_user
+        raise PermissionDeniedError()
+
+    return _dep
+
+
 def _to_response(jutsu: object) -> JutsuResponse:
     return JutsuResponse.model_validate(jutsu)
 
@@ -118,7 +146,9 @@ async def list_jutsu_endpoint(
 async def get_jutsu_endpoint(
     jutsu_id: Annotated[UUID, Path()],
     session: SessionDep,
-    current_user: Annotated[User, Depends(require_permission("jutsu:read"))],
+    current_user: Annotated[
+        User, Depends(_require_jutsu_permission("jutsu:read", JUTSU_READ_ACTION))
+    ],
 ) -> JutsuResponse:
     return _to_response(await get_jutsu_by_id(jutsu_id, session))
 
@@ -139,7 +169,9 @@ async def update_jutsu_endpoint(
     jutsu_id: Annotated[UUID, Path()],
     request: JutsuUpdateRequest,
     session: SessionDep,
-    current_user: Annotated[User, Depends(require_permission("jutsu:update"))],
+    current_user: Annotated[
+        User, Depends(_require_jutsu_permission("jutsu:update", JUTSU_UPDATE_ACTION))
+    ],
 ) -> JutsuResponse:
     return _to_response(await update_jutsu(jutsu_id, request, session))
 
@@ -148,7 +180,9 @@ async def update_jutsu_endpoint(
 async def delete_jutsu_endpoint(
     jutsu_id: Annotated[UUID, Path()],
     session: SessionDep,
-    current_user: Annotated[User, Depends(require_permission("jutsu:delete"))],
+    current_user: Annotated[
+        User, Depends(_require_jutsu_permission("jutsu:delete", JUTSU_DELETE_ACTION))
+    ],
 ) -> None:
     await delete_jutsu(jutsu_id, session)
 

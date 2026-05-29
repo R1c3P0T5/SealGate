@@ -19,3 +19,12 @@ class DoorJutsu(SQLModel, table=True):
 
     door_id: UUID = Field(foreign_key="door.id", primary_key=True)
     jutsu_id: UUID = Field(foreign_key="jutsu.id", primary_key=True)
+
+
+class UserJutsuPermission(SQLModel, table=True):
+    __tablename__: str = "userjutsupermission"  # type: ignore[assignment]
+
+    user_id: UUID = Field(foreign_key="user.id", primary_key=True)
+    jutsu_id: UUID = Field(foreign_key="jutsu.id", primary_key=True, index=True)
+    action: str = Field(primary_key=True, max_length=32)
+    created_at: datetime = Field(default_factory=utc_now_naive, nullable=False)

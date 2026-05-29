@@ -8,6 +8,7 @@ from src.auth.schemas import UserResponse
 from src.core.database import SessionDep
 from src.core.permissions import check_access
 from src.doors.access import list_user_door_access, replace_user_door_access
+from src.handsign.access import list_user_jutsu_access, replace_user_jutsu_access
 from src.permissions.schemas import (
     SetUserPermissionsRequest,
     SetUserRoleRequest,
@@ -24,7 +25,9 @@ from src.users.schemas import (
     ChangePasswordRequest,
     SetUserActiveRequest,
     SetUserDoorAccessRequest,
+    SetUserJutsuAccessRequest,
     UserDoorAccessResponse,
+    UserJutsuAccessResponse,
     UserListResponse,
     UserResponseFull,
     UserUpdateRequest,
@@ -41,6 +44,7 @@ from src.users.service import (
 
 
 DoorAction = Literal["unlock", "read", "update", "delete"]
+JutsuAction = Literal["read", "update", "delete"]
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -237,6 +241,37 @@ async def set_user_door_access(
         user_id, request.door_ids, session, action=action
     )
     return UserDoorAccessResponse(door_ids=door_ids)
+
+
+@router.get("/{user_id}/jutsu", response_model=UserJutsuAccessResponse)
+async def user_jutsu_access(
+    user_id: Annotated[UUID, Path()],
+    session: SessionDep,
+    current_user: Annotated[User, Depends(require_permission("user:manage"))],
+    action: Annotated[
+        JutsuAction, Query(description="Jutsu permission action to query.")
+    ] = "read",
+) -> UserJutsuAccessResponse:
+    await get_user_by_id(user_id, session)
+    jutsu_ids = await list_user_jutsu_access(user_id, session, action=action)
+    return UserJutsuAccessResponse(jutsu_ids=jutsu_ids)
+
+
+@router.put("/{user_id}/jutsu", response_model=UserJutsuAccessResponse)
+async def set_user_jutsu_access(
+    user_id: Annotated[UUID, Path()],
+    request: SetUserJutsuAccessRequest,
+    session: SessionDep,
+    current_user: Annotated[User, Depends(require_permission("user:manage"))],
+    action: Annotated[
+        JutsuAction, Query(description="Jutsu permission action to assign.")
+    ] = "read",
+) -> UserJutsuAccessResponse:
+    await get_user_by_id(user_id, session)
+    jutsu_ids = await replace_user_jutsu_access(
+        user_id, request.jutsu_ids, session, action=action
+    )
+    return UserJutsuAccessResponse(jutsu_ids=jutsu_ids)
 
 
 @router.put("/{user_id}/role", response_model=UserResponse)
