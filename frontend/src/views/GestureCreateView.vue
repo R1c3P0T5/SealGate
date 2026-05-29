@@ -6,6 +6,7 @@ import type { Options } from 'sortablejs'
 
 import { Alert, Button, Input, useToast } from '@/lib'
 import GestureCreateLayout from '@/layouts/GestureCreateLayout.vue'
+import { createJutsuEndpointApiJutsuPost } from '@/api/sdk.gen'
 import { gestureImageUrl, useGesturesStore } from '@/stores/gestures'
 
 defineOptions({ name: 'GestureCreateView' })
@@ -21,6 +22,7 @@ const toast = useToast()
 const name = ref('')
 const nameError = ref<string | null>(null)
 const generalError = ref<string | null>(null)
+const submitting = ref(false)
 
 const libraryItems = ref<Seal[]>(
   store.library.map((g) => ({ uid: `lib-${g.jstsu}`, jstsu: g.jstsu })),
@@ -107,7 +109,16 @@ function onEnd(evt: DraggableEvent<Seal>) {
   lastValid = next.map((s) => ({ ...s }))
 }
 
-function save() {
+function errorMessage(value: unknown, fallback: string) {
+  if (value && typeof value === 'object' && 'detail' in value) {
+    const detail = (value as { detail?: unknown }).detail
+    if (typeof detail === 'string') return detail
+    if (Array.isArray(detail)) return detail.map(String).join(', ')
+  }
+  return fallback
+}
+
+async function save() {
   generalError.value = null
   nameError.value = null
   const trimmed = name.value.trim()
@@ -123,12 +134,19 @@ function save() {
     generalError.value = 'Add at least one seal.'
     return
   }
-  store.createSequence(
-    trimmed,
-    localSteps.value.map((s) => s.jstsu),
-  )
-  toast.show({ title: 'Seal saved' })
-  void router.push({ name: 'gestures' })
+  submitting.value = true
+  try {
+    await createJutsuEndpointApiJutsuPost({
+      body: { name: trimmed, signs: localSteps.value.map((s) => s.jstsu) },
+      throwOnError: true,
+    })
+    toast.show({ title: 'Seal saved' })
+    void router.push({ name: 'gestures' })
+  } catch (err) {
+    generalError.value = errorMessage(err, 'Could not create seal.')
+  } finally {
+    submitting.value = false
+  }
 }
 
 function cancel() {
@@ -232,8 +250,16 @@ function cancel() {
       </section>
 
       <div class="flex justify-end gap-2 pt-2">
-        <Button variant="ghost" size="sm" @click="cancel">Cancel</Button>
-        <Button variant="primary" size="sm" @click="save">Create</Button>
+        <Button variant="ghost" size="sm" :disabled="submitting" @click="cancel">Cancel</Button>
+        <Button
+          variant="primary"
+          size="sm"
+          :loading="submitting"
+          :disabled="submitting"
+          @click="save"
+        >
+          Create
+        </Button>
       </div>
     </div>
   </GestureCreateLayout>

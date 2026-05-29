@@ -4,9 +4,15 @@ import { useRoute, useRouter } from 'vue-router'
 import { VueDraggable, type DraggableEvent } from 'vue-draggable-plus'
 import type { Options } from 'sortablejs'
 
-import { Alert, Button, Input, State, useToast } from '@/lib'
+import { Alert, Button, Input, Skeleton, State, useToast } from '@/lib'
 import GestureEditLayout from '@/layouts/GestureEditLayout.vue'
-import { gestureImageUrl, useGesturesStore, type GestureSequence } from '@/stores/gestures'
+import {
+  deleteJutsuEndpointApiJutsuJutsuIdDelete,
+  getJutsuEndpointApiJutsuJutsuIdGet,
+  updateJutsuEndpointApiJutsuJutsuIdPut,
+} from '@/api/sdk.gen'
+import type { JutsuResponse } from '@/api/types.gen'
+import { gestureImageUrl, useGesturesStore } from '@/stores/gestures'
 
 defineOptions({ name: 'GestureEditView' })
 
@@ -21,10 +27,16 @@ const toast = useToast()
 
 const sequenceId = computed(() => String(route.params.id))
 
-const sequence = ref<GestureSequence | null>(null)
+const jutsu = ref<JutsuResponse | null>(null)
 const name = ref('')
 const nameError = ref<string | null>(null)
 const generalError = ref<string | null>(null)
+const loading = ref(false)
+const loadError = ref<string | null>(null)
+const saving = ref(false)
+const deleting = ref(false)
+
+const busy = computed(() => saving.value || deleting.value)
 
 const libraryItems = ref<Seal[]>(
   store.library.map((g) => ({ uid: `lib-${g.jstsu}`, jstsu: g.jstsu })),
@@ -45,23 +57,40 @@ function newUid(): string {
   return `seal-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-function loadSequence() {
-  const seq = store.findSequence(sequenceId.value)
-  if (!seq) {
-    sequence.value = null
-    return
+function errorMessage(value: unknown, fallback: string) {
+  if (value && typeof value === 'object' && 'detail' in value) {
+    const detail = (value as { detail?: unknown }).detail
+    if (typeof detail === 'string') return detail
+    if (Array.isArray(detail)) return detail.map(String).join(', ')
   }
-  sequence.value = seq
-  name.value = seq.name
-  localSteps.value = seq.steps.map((jstsu) => ({ uid: newUid(), jstsu }))
-  lastValid = localSteps.value.map((s) => ({ ...s }))
+  return fallback
+}
+
+async function load() {
+  loading.value = true
+  loadError.value = null
+  try {
+    const res = await getJutsuEndpointApiJutsuJutsuIdGet({
+      path: { jutsu_id: sequenceId.value },
+      throwOnError: true,
+    })
+    const data = res.data as JutsuResponse
+    jutsu.value = data
+    name.value = data.name
+    localSteps.value = data.signs.map((jstsu) => ({ uid: newUid(), jstsu }))
+    lastValid = localSteps.value.map((s) => ({ ...s }))
+  } catch (err) {
+    loadError.value = errorMessage(err, 'Could not load seal.')
+  } finally {
+    loading.value = false
+  }
 }
 
 const dirty = computed(() => {
-  if (!sequence.value) return false
-  if (sequence.value.name !== name.value) return true
-  if (sequence.value.steps.length !== localSteps.value.length) return true
-  return sequence.value.steps.some((jstsu, i) => jstsu !== localSteps.value[i]?.jstsu)
+  if (!jutsu.value) return false
+  if (jutsu.value.name !== name.value) return true
+  if (jutsu.value.signs.length !== localSteps.value.length) return true
+  return jutsu.value.signs.some((sign, i) => sign !== localSteps.value[i]?.jstsu)
 })
 
 // Dragged out of the library: insert a fresh step (new uid), keep the palette intact.
@@ -130,8 +159,8 @@ function onEnd(evt: DraggableEvent<Seal>) {
   lastValid = next.map((s) => ({ ...s }))
 }
 
-function save() {
-  if (!sequence.value) return
+async function save() {
+  if (!jutsu.value) return
   generalError.value = null
   nameError.value = null
   const trimmed = name.value.trim()
@@ -147,34 +176,70 @@ function save() {
     generalError.value = 'Add at least one seal.'
     return
   }
-  store.updateSequence(sequence.value.id, {
-    name: trimmed,
-    steps: localSteps.value.map((s) => s.jstsu),
-  })
-  toast.show({ title: 'Saved' })
-  void router.push({ name: 'gestures' })
+  saving.value = true
+  try {
+    const res = await updateJutsuEndpointApiJutsuJutsuIdPut({
+      path: { jutsu_id: jutsu.value.id },
+      body: { name: trimmed, signs: localSteps.value.map((s) => s.jstsu) },
+      throwOnError: true,
+    })
+    jutsu.value = res.data as JutsuResponse
+    toast.show({ title: 'Saved' })
+    void router.push({ name: 'gestures' })
+  } catch (err) {
+    generalError.value = errorMessage(err, 'Save failed.')
+  } finally {
+    saving.value = false
+  }
 }
 
-function remove() {
-  if (!sequence.value) return
-  if (!window.confirm(`Delete seal "${sequence.value.name}"?`)) return
-  store.deleteSequence(sequence.value.id)
-  toast.show({ title: 'Seal deleted' })
-  void router.push({ name: 'gestures' })
+async function remove() {
+  if (!jutsu.value) return
+  if (!window.confirm(`Delete seal "${jutsu.value.name}"?`)) return
+  deleting.value = true
+  generalError.value = null
+  try {
+    await deleteJutsuEndpointApiJutsuJutsuIdDelete({
+      path: { jutsu_id: jutsu.value.id },
+      throwOnError: true,
+    })
+    toast.show({ title: 'Seal deleted' })
+    void router.push({ name: 'gestures' })
+  } catch (err) {
+    generalError.value = errorMessage(err, 'Could not delete seal.')
+    deleting.value = false
+  }
 }
 
-onMounted(loadSequence)
+onMounted(load)
 </script>
 
 <template>
   <GestureEditLayout>
-    <template #title>{{ sequence?.name ?? '—' }}</template>
-    <template v-if="sequence" #actions>
-      <Button variant="err" size="sm" @click="remove">Delete</Button>
-      <Button variant="primary" size="sm" :disabled="!dirty" @click="save">Save</Button>
+    <template #title>{{ jutsu?.name ?? '—' }}</template>
+    <template v-if="jutsu" #actions>
+      <Button variant="err" size="sm" :loading="deleting" :disabled="busy" @click="remove">
+        Delete
+      </Button>
+      <Button
+        variant="primary"
+        size="sm"
+        :loading="saving"
+        :disabled="!dirty || busy"
+        @click="save"
+      >
+        Save
+      </Button>
     </template>
 
-    <State v-if="!sequence" variant="error" title="Seal not found" :center="true">
+    <Alert v-if="loadError" variant="err" class="mb-3">{{ loadError }}</Alert>
+
+    <div v-if="loading" class="grid gap-3">
+      <Skeleton :height="40" />
+      <Skeleton :height="120" />
+    </div>
+
+    <State v-else-if="!jutsu" variant="error" title="Seal not found" :center="true">
       <RouterLink to="/gestures">
         <Button variant="ghost" size="sm">Back to list</Button>
       </RouterLink>
@@ -189,6 +254,7 @@ onMounted(loadSequence)
         :maxlength="NAME_MAX"
         :invalid="!!nameError"
         :error="nameError ?? undefined"
+        :disabled="busy"
       />
 
       <section class="grid gap-2">
@@ -220,13 +286,13 @@ onMounted(loadSequence)
               v-for="step in localSteps"
               :key="step.uid"
               :data-jstsu="step.jstsu"
-              class="relative flex h-20 w-16 md:h-28 md:w-[88px] cursor-grab select-none flex-col items-center gap-1 rounded-md border border-border bg-bg pt-2 md:pt-3 active:cursor-grabbing"
+              class="relative flex h-20 w-16 cursor-grab select-none flex-col items-center gap-1 rounded-md border border-border bg-bg pt-2 active:cursor-grabbing md:h-28 md:w-[88px] md:pt-3"
             >
               <img
                 :src="gestureImageUrl(step.jstsu)"
                 :alt="step.jstsu"
                 draggable="false"
-                class="pointer-events-none h-12 w-12 rounded-md md:h-20 md:w-20 border border-border-soft object-cover"
+                class="pointer-events-none h-12 w-12 rounded-md border border-border-soft object-cover md:h-20 md:w-20"
               />
               <span class="font-mono text-[9px] text-text-hi md:text-[11px]">{{ step.jstsu }}</span>
             </div>
@@ -260,13 +326,13 @@ onMounted(loadSequence)
             v-for="g in libraryItems"
             :key="g.uid"
             :data-jstsu="g.jstsu"
-            class="relative flex h-20 w-16 md:h-28 md:w-[88px] cursor-grab select-none flex-col items-center gap-1 rounded-md border border-border bg-bg pt-2 md:pt-3 transition-shadow hover:shadow-sm active:cursor-grabbing"
+            class="relative flex h-20 w-16 cursor-grab select-none flex-col items-center gap-1 rounded-md border border-border bg-bg pt-2 transition-shadow hover:shadow-sm active:cursor-grabbing md:h-28 md:w-[88px] md:pt-3"
           >
             <img
               :src="gestureImageUrl(g.jstsu)"
               :alt="g.jstsu"
               draggable="false"
-              class="pointer-events-none h-12 w-12 rounded-md md:h-20 md:w-20 border border-border-soft object-cover"
+              class="pointer-events-none h-12 w-12 rounded-md border border-border-soft object-cover md:h-20 md:w-20"
             />
             <span class="font-mono text-[9px] text-text-hi md:text-[11px]">{{ g.jstsu }}</span>
           </div>
