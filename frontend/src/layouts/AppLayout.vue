@@ -20,6 +20,7 @@ const navItems = computed<NavItemDef[]>(() => {
     items.push({ key: 'recognize', label: 'Live Recognition', href: '/recognize' })
   }
   items.push({ key: 'faces', label: 'Face Management', href: '/faces' })
+  items.push({ key: 'gestures', label: 'Seal Management', href: '/gestures' })
   if (isAdmin) {
     items.push({ key: 'access-logs', label: 'Access Logs', href: '/access-logs' })
     items.push({ key: 'doors', label: 'Doors', href: '/doors' })
@@ -33,6 +34,7 @@ const activeKey = computed(() => {
   const name = String(route.name ?? '')
   if (name === 'faces-new') return 'faces'
   if (name === 'doors-new' || name === 'doors-edit') return 'doors'
+  if (name === 'gestures-new' || name === 'gestures-edit') return 'gestures'
   return name
 })
 

@@ -87,6 +87,17 @@ const router = createRouter({
           component: () => import('@/views/UserEditView.vue'),
           meta: { adminOnly: true },
         },
+        { path: 'gestures', name: 'gestures', component: () => import('@/views/GesturesView.vue') },
+        {
+          path: 'gestures/new',
+          name: 'gestures-new',
+          component: () => import('@/views/GestureCreateView.vue'),
+        },
+        {
+          path: 'gestures/:id',
+          name: 'gestures-edit',
+          component: () => import('@/views/GestureEditView.vue'),
+        },
         { path: 'settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },
       ],
     },
