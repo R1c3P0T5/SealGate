@@ -22,10 +22,10 @@ from sqlmodel import col, select
 from src.doors.models import Door
 from src.handsign.jutsu import SIGN_KANJI
 from src.handsign.registry import HandsignFSMRegistry
+from src.handsign.router import handsign_door_router
 from src.handsign.router import handsign_feed_router
-from src.handsign.router import door_jutsu_router as handsign_door_router
 from src.handsign.router import init_handsign
-from src.handsign.router import router as jutsu_router
+from src.handsign.router import jutsu_router
 from src.handsign.service import get_door_jutsu
 from src.handsign.session import DoorSessionStore
 from src.permissions.router import router as permissions_router

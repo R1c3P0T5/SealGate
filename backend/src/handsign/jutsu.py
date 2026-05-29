@@ -62,11 +62,14 @@ class JutsuFSM:
 
     jutsu dict values must be kanji sequences (e.g. ["亥", "寅"]).
     feed() accepts romaji signs and converts them via SIGN_KANJI.
+
+    on_complete fires only when a full sequence is recognised AND the
+    global cooldown has elapsed. It never fires on partial progress.
     """
 
     def __init__(
         self,
-        on_jutsu: Callable[[str], None],
+        on_complete: Callable[[str], None],
         jutsu: dict[str, list[str]],
         gap_ms: float = 3000,
         cooldown_ms: float = 5000,
@@ -74,9 +77,11 @@ class JutsuFSM:
         self.jutsu = jutsu
         self.gap_ms = gap_ms
         self.cooldown_ms = cooldown_ms
-        self.on_jutsu = on_jutsu
+        self.on_complete = on_complete
         self._step: dict[str, int] = {name: 0 for name in jutsu}
-        self._last_at: dict[str, float] = {name: 0.0 for name in jutsu}
+        # Timestamp of the last sign that advanced each jutsu's step counter.
+        # Used to expire stale progress after gap_ms of inactivity.
+        self._last_step_at: dict[str, float] = {name: 0.0 for name in jutsu}
         self._fired_at: float = -cooldown_ms  # allow immediate first fire
         self._last_sign: str | None = None
 
@@ -87,27 +92,27 @@ class JutsuFSM:
         kanji = SIGN_KANJI.get(sign)
         if kanji is None:
             return
-        completed: list[str] = []
+        newly_completed: list[str] = []
         for name, seq in self.jutsu.items():
             if (
                 self._step[name] > 0
-                and (now - self._last_at[name]) * 1000 > self.gap_ms
+                and (now - self._last_step_at[name]) * 1000 > self.gap_ms
             ):
                 self._step[name] = 0
             step = self._step[name]
             if kanji == seq[step]:
                 self._step[name] += 1
-                self._last_at[name] = now
+                self._last_step_at[name] = now
                 if self._step[name] == len(seq):
                     self._step[name] = 0
-                    completed.append(name)
+                    newly_completed.append(name)
             else:
                 self._step[name] = 0
-        if completed and (now - self._fired_at) * 1000 >= self.cooldown_ms:
-            winner = max(completed, key=lambda n: len(self.jutsu[n]))
+        if newly_completed and (now - self._fired_at) * 1000 >= self.cooldown_ms:
+            winner = max(newly_completed, key=lambda n: len(self.jutsu[n]))
             self._fired_at = now
             self.reset()
-            self.on_jutsu(winner)
+            self.on_complete(winner)
 
     def reset(self) -> None:
         for name in self._step:

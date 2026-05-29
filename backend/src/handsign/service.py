@@ -67,7 +67,7 @@ async def delete_jutsu(jutsu_id: UUID, session: AsyncSession) -> None:
     await session.commit()
 
 
-async def assign_jutsu_to_door(
+async def assign_door_jutsu(
     door_id: UUID, jutsu_id: UUID, session: AsyncSession
 ) -> None:
     await get_door_by_id(door_id, session)
@@ -79,7 +79,7 @@ async def assign_jutsu_to_door(
     await session.commit()
 
 
-async def unassign_jutsu_from_door(
+async def unassign_door_jutsu(
     door_id: UUID, jutsu_id: UUID, session: AsyncSession
 ) -> None:
     link = await session.get(DoorJutsu, (door_id, jutsu_id))
