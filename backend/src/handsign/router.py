@@ -3,6 +3,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.auth.dependencies import require_permission
 from src.core.database import SessionDep
@@ -20,6 +21,7 @@ from src.handsign.service import (
     assign_jutsu_to_door,
     create_jutsu,
     delete_jutsu,
+    get_door_jutsu,
     get_jutsu_by_id,
     list_jutsu,
     unassign_jutsu_from_door,
@@ -50,6 +52,34 @@ def init_handsign(
     global _registry, _session_store
     _registry = registry
     _session_store = session_store
+
+
+async def _reload_door_registry(door_id: UUID, session: AsyncSession) -> None:
+    from src.doors.service import get_door_by_id
+    from src.handsign.jutsu import SIGN_KANJI
+
+    if _registry is None:
+        return
+
+    try:
+        door = await get_door_by_id(door_id, session)
+    except Exception:
+        _registry.unload(door_id)
+        return
+
+    if door.auth_mode not in ("handsign", "both"):
+        _registry.unload(door_id)
+        return
+
+    jutsu_rows = await get_door_jutsu(door_id, session)
+    jutsu_dict = {
+        j.name: [SIGN_KANJI[s] for s in j.signs if s in SIGN_KANJI] for j in jutsu_rows
+    }
+    valid_jutsu = {name: seq for name, seq in jutsu_dict.items() if seq}
+    if valid_jutsu:
+        _registry.load(door_id, valid_jutsu)
+    else:
+        _registry.unload(door_id)
 
 
 router = APIRouter(tags=["jutsu"])
@@ -126,6 +156,7 @@ async def assign_jutsu_endpoint(
     current_user: Annotated[User, Depends(require_permission("door:update"))],
 ) -> None:
     await assign_jutsu_to_door(door_id, jutsu_id, session)
+    await _reload_door_registry(door_id, session)
 
 
 @door_jutsu_router.delete(
@@ -140,6 +171,7 @@ async def unassign_jutsu_endpoint(
     current_user: Annotated[User, Depends(require_permission("door:update"))],
 ) -> None:
     await unassign_jutsu_from_door(door_id, jutsu_id, session)
+    await _reload_door_registry(door_id, session)
 
 
 handsign_feed_router = APIRouter(prefix="/api/doors", tags=["handsign"])
