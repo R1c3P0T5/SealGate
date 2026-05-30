@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { Alert, Button, Input, Skeleton, Switch, useToast } from '@/lib'
+import { Alert, Button, Dialog, Input, Skeleton, Switch, useToast } from '@/lib'
 import DoorEditLayout from '@/layouts/DoorEditLayout.vue'
 import {
   createDeviceEndpointApiDevicesPost,
@@ -60,6 +60,10 @@ const removingDevice = ref(false)
 const loadError = ref<string | null>(null)
 const generalError = ref<string | null>(null)
 const newToken = ref<string | null>(null)
+
+const rotateDialogOpen = ref(false)
+const removeDeviceDialogOpen = ref(false)
+const deleteDialogOpen = ref(false)
 
 const busy = computed(
   () =>
@@ -191,13 +195,6 @@ async function save() {
 
 async function rotateToken() {
   if (!device.value) return
-  if (
-    !window.confirm(
-      `Rotate token for "${device.value.name}"? The current token will stop working immediately.`,
-    )
-  )
-    return
-
   rotating.value = true
   generalError.value = null
   try {
@@ -211,13 +208,12 @@ async function rotateToken() {
     generalError.value = errorMessage(err, 'Could not rotate token.')
   } finally {
     rotating.value = false
+    rotateDialogOpen.value = false
   }
 }
 
 async function removeDevice() {
   if (!device.value) return
-  if (!window.confirm(`Remove device "${device.value.name}" from this door?`)) return
-
   removingDevice.value = true
   generalError.value = null
   try {
@@ -232,6 +228,7 @@ async function removeDevice() {
     generalError.value = errorMessage(err, 'Could not remove device.')
   } finally {
     removingDevice.value = false
+    removeDeviceDialogOpen.value = false
   }
 }
 
@@ -267,11 +264,6 @@ async function addDevice() {
 
 async function remove() {
   if (!door.value) return
-  const message = device.value
-    ? `Delete door "${door.value.name}" and its device? This cannot be undone.`
-    : `Delete door "${door.value.name}"? This cannot be undone.`
-  if (!window.confirm(message)) return
-
   deleting.value = true
   generalError.value = null
   try {
@@ -290,6 +282,7 @@ async function remove() {
   } catch (err) {
     generalError.value = errorMessage(err, 'Could not delete door.')
     deleting.value = false
+    deleteDialogOpen.value = false
   }
 }
 
@@ -324,7 +317,13 @@ onMounted(load)
   <DoorEditLayout>
     <template #title>{{ door?.name ?? '—' }}</template>
     <template v-if="door" #actions>
-      <Button variant="err" size="sm" :loading="deleting" :disabled="busy" @click="remove">
+      <Button
+        variant="err"
+        size="sm"
+        :loading="deleting"
+        :disabled="busy"
+        @click="deleteDialogOpen = true"
+      >
         Delete
       </Button>
       <Button
@@ -429,7 +428,7 @@ onMounted(load)
               size="xs"
               :loading="rotating"
               :disabled="busy"
-              @click="rotateToken"
+              @click="rotateDialogOpen = true"
             >
               Rotate token
             </Button>
@@ -438,7 +437,7 @@ onMounted(load)
               size="xs"
               :loading="removingDevice"
               :disabled="busy"
-              @click="removeDevice"
+              @click="removeDeviceDialogOpen = true"
             >
               Remove
             </Button>
@@ -488,5 +487,56 @@ onMounted(load)
         </div>
       </section>
     </div>
+
+    <Dialog v-model:open="rotateDialogOpen" title="Rotate token?">
+      <p>
+        This issues a new token for
+        <span class="font-mono text-text-hi">{{ device?.name }}</span>
+        and the current token stops working immediately.
+      </p>
+      <template #footer>
+        <Button variant="ghost" size="sm" :disabled="rotating" @click="rotateDialogOpen = false">
+          Cancel
+        </Button>
+        <Button variant="primary" size="sm" :loading="rotating" @click="rotateToken">
+          Rotate token
+        </Button>
+      </template>
+    </Dialog>
+
+    <Dialog v-model:open="removeDeviceDialogOpen" title="Remove device?">
+      <p>
+        This unlinks
+        <span class="font-mono text-text-hi">{{ device?.name }}</span>
+        from this door. The device can no longer authenticate.
+      </p>
+      <template #footer>
+        <Button
+          variant="ghost"
+          size="sm"
+          :disabled="removingDevice"
+          @click="removeDeviceDialogOpen = false"
+        >
+          Cancel
+        </Button>
+        <Button variant="err" size="sm" :loading="removingDevice" @click="removeDevice">
+          Remove device
+        </Button>
+      </template>
+    </Dialog>
+
+    <Dialog v-model:open="deleteDialogOpen" title="Delete door?">
+      <p>
+        This permanently removes
+        <span class="font-mono text-text-hi">{{ door?.name }}</span>
+        <template v-if="device"> and its linked device</template>. This cannot be undone.
+      </p>
+      <template #footer>
+        <Button variant="ghost" size="sm" :disabled="deleting" @click="deleteDialogOpen = false">
+          Cancel
+        </Button>
+        <Button variant="err" size="sm" :loading="deleting" @click="remove"> Delete </Button>
+      </template>
+    </Dialog>
   </DoorEditLayout>
 </template>
