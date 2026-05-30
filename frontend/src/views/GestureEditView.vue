@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { VueDraggable, type DraggableEvent } from 'vue-draggable-plus'
 import type { Options } from 'sortablejs'
 
-import { Alert, Button, Input, Skeleton, State, useToast } from '@/lib'
+import { Alert, Button, Dialog, Input, Skeleton, State, useToast } from '@/lib'
 import GestureEditLayout from '@/layouts/GestureEditLayout.vue'
 import {
   deleteJutsuEndpointApiJutsuJutsuIdDelete,
@@ -35,6 +35,8 @@ const loading = ref(false)
 const loadError = ref<string | null>(null)
 const saving = ref(false)
 const deleting = ref(false)
+const editing = ref(false)
+const deleteDialogOpen = ref(false)
 
 const busy = computed(() => saving.value || deleting.value)
 
@@ -193,9 +195,8 @@ async function save() {
   }
 }
 
-async function remove() {
+async function confirmDelete() {
   if (!jutsu.value) return
-  if (!window.confirm(`Delete seal "${jutsu.value.name}"?`)) return
   deleting.value = true
   generalError.value = null
   try {
@@ -207,8 +208,22 @@ async function remove() {
     void router.push({ name: 'gestures' })
   } catch (err) {
     generalError.value = errorMessage(err, 'Could not delete seal.')
+  } finally {
     deleting.value = false
+    deleteDialogOpen.value = false
   }
+}
+
+// Discard unsaved edits: restore name and steps from the loaded jutsu, drop errors,
+// and return to read-only.
+function cancelEdit() {
+  if (!jutsu.value) return
+  name.value = jutsu.value.name
+  localSteps.value = jutsu.value.signs.map((jstsu) => ({ uid: newUid(), jstsu }))
+  lastValid = localSteps.value.map((s) => ({ ...s }))
+  nameError.value = null
+  generalError.value = null
+  editing.value = false
 }
 
 onMounted(load)
@@ -218,18 +233,24 @@ onMounted(load)
   <GestureEditLayout>
     <template #title>{{ jutsu?.name ?? '—' }}</template>
     <template v-if="jutsu" #actions>
-      <Button variant="err" size="sm" :loading="deleting" :disabled="busy" @click="remove">
-        Delete
+      <Button v-if="!editing" variant="primary" size="sm" :disabled="busy" @click="editing = true">
+        Edit
       </Button>
-      <Button
-        variant="primary"
-        size="sm"
-        :loading="saving"
-        :disabled="!dirty || busy"
-        @click="save"
-      >
-        Save
-      </Button>
+      <template v-else>
+        <Button variant="err" size="sm" :disabled="busy" @click="deleteDialogOpen = true">
+          Delete
+        </Button>
+        <Button variant="ghost" size="sm" :disabled="busy" @click="cancelEdit"> Cancel </Button>
+        <Button
+          variant="primary"
+          size="sm"
+          :loading="saving"
+          :disabled="!dirty || busy"
+          @click="save"
+        >
+          Save
+        </Button>
+      </template>
     </template>
 
     <Alert v-if="loadError" variant="err" class="mb-3">{{ loadError }}</Alert>
@@ -249,6 +270,7 @@ onMounted(load)
       <Alert v-if="generalError" variant="err">{{ generalError }}</Alert>
 
       <Input
+        v-if="editing"
         v-model="name"
         placeholder="Name"
         :maxlength="NAME_MAX"
@@ -258,7 +280,7 @@ onMounted(load)
       />
 
       <section class="grid gap-2">
-        <div class="flex items-baseline justify-between gap-2">
+        <div v-if="editing" class="flex items-baseline justify-between gap-2">
           <h2 class="font-mono text-[11px] uppercase tracking-[0.1em] text-text-placeholder">
             Pipeline
           </h2>
@@ -272,6 +294,7 @@ onMounted(load)
           <VueDraggable
             v-model="localSteps"
             :group="pipelineGroup"
+            :disabled="!editing"
             :animation="300"
             easing="cubic-bezier(0.34, 1.4, 0.64, 1)"
             :force-fallback="true"
@@ -286,7 +309,10 @@ onMounted(load)
               v-for="step in localSteps"
               :key="step.uid"
               :data-jstsu="step.jstsu"
-              class="relative flex h-20 w-16 cursor-grab select-none flex-col items-center gap-1 rounded-md border border-border bg-bg pt-2 active:cursor-grabbing md:h-28 md:w-[88px] md:pt-3"
+              :class="[
+                'relative flex h-20 w-16 select-none flex-col items-center gap-1 rounded-md border border-border bg-bg pt-2 md:h-28 md:w-[88px] md:pt-3',
+                editing ? 'cursor-grab active:cursor-grabbing' : 'cursor-default',
+              ]"
             >
               <img
                 :src="gestureImageUrl(step.jstsu)"
@@ -307,7 +333,7 @@ onMounted(load)
         </div>
       </section>
 
-      <section class="grid gap-2">
+      <section v-if="editing" class="grid gap-2">
         <h2 class="font-mono text-[11px] uppercase tracking-[0.1em] text-text-placeholder">
           Seals
         </h2>
@@ -339,6 +365,20 @@ onMounted(load)
         </VueDraggable>
       </section>
     </div>
+
+    <Dialog v-model:open="deleteDialogOpen" title="Delete seal?">
+      <p>
+        This permanently removes
+        <span class="font-mono text-text-hi">{{ jutsu?.name }}</span>
+        and its seal sequence. This cannot be undone.
+      </p>
+      <template #footer>
+        <Button variant="ghost" size="sm" :disabled="deleting" @click="deleteDialogOpen = false">
+          Cancel
+        </Button>
+        <Button variant="err" size="sm" :loading="deleting" @click="confirmDelete"> Delete </Button>
+      </template>
+    </Dialog>
   </GestureEditLayout>
 </template>
 
