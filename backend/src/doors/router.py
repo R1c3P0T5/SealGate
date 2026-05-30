@@ -286,17 +286,10 @@ async def recognize_door_endpoint(
                     detail="Failed to publish door unlock command",
                 ) from exc
         elif door.auth_mode == "both":
-            try:
-                session_store = get_session_store()
-            except AssertionError:
-                raise HTTPException(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail="Handsign service not available",
-                )
             door_opened = await try_unlock_both(
                 door.id,
                 "face_ok",
-                session_store,
+                get_session_store(),
                 lambda: publish_door_unlock(door),
                 logger,
             )

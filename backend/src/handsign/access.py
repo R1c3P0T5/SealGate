@@ -14,7 +14,7 @@ JUTSU_UPDATE_ACTION = "update"
 JUTSU_DELETE_ACTION = "delete"
 
 
-async def _active_user_has_jutsu_permission(
+async def user_can_manage_jutsu(
     user_id: UUID,
     jutsu_id: UUID,
     action: str,
@@ -25,15 +25,6 @@ async def _active_user_has_jutsu_permission(
         return False
     access = await session.get(UserJutsuPermission, (user_id, jutsu_id, action))
     return access is not None
-
-
-async def user_can_manage_jutsu(
-    user_id: UUID,
-    jutsu_id: UUID,
-    action: str,
-    session: AsyncSession,
-) -> bool:
-    return await _active_user_has_jutsu_permission(user_id, jutsu_id, action, session)
 
 
 async def list_user_jutsu_access(
@@ -62,13 +53,14 @@ async def replace_user_jutsu_access(
     action: str = JUTSU_READ_ACTION,
 ) -> list[UUID]:
     unique_ids = list(dict.fromkeys(jutsu_ids))
+    unique_set = set(unique_ids)
     if unique_ids:
         found = set(
             (
                 await session.exec(select(Jutsu.id).where(Jutsu.id.in_(unique_ids)))  # type: ignore[attr-defined]
             ).all()
         )
-        if found != set(unique_ids):
+        if found != unique_set:
             raise JutsuNotFoundError()
 
     await session.exec(
