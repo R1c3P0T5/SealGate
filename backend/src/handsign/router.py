@@ -39,6 +39,8 @@ from src.handsign.service import (
 )
 from src.handsign.session import DoorSessionStore, try_unlock_both
 from src.users.models import User
+from src.camera.broker import CameraFrameBroker
+from src.doors.mqtt import publish_door_unlock
 
 logger = logging.getLogger(__name__)
 
@@ -47,12 +49,20 @@ _session_store: "DoorSessionStore | None" = None
 
 
 def get_registry() -> "HandsignFSMRegistry":
-    assert _registry is not None, "HandsignFSMRegistry not initialized"
+    if _registry is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Handsign service not available",
+        )
     return _registry
 
 
 def get_session_store() -> "DoorSessionStore":
-    assert _session_store is not None, "DoorSessionStore not initialized"
+    if _session_store is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Handsign service not available",
+        )
     return _session_store
 
 
@@ -252,13 +262,7 @@ async def handsign_feed_endpoint(
             status_code=409, detail="Door auth_mode does not require hand signs"
         )
 
-    try:
-        registry = get_registry()
-    except AssertionError:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Handsign service not available",
-        )
+    registry = get_registry()
     door_state = registry.get(door_id)
     if door_state is None:
         raise HTTPException(status_code=503, detail="FSM not loaded for this door")
@@ -279,8 +283,6 @@ async def handsign_feed_endpoint(
     completed = completed_name is not None
 
     if completed:
-        from src.doors.mqtt import publish_door_unlock
-
         if door.auth_mode == "handsign":
             door_unlocked = False
             try:
@@ -302,24 +304,15 @@ async def handsign_feed_endpoint(
                     logger,
                 )
         elif door.auth_mode == "both":
-            try:
-                store = get_session_store()
-            except AssertionError:
-                raise HTTPException(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail="Handsign service not available",
-                )
             await try_unlock_both(
                 door_id,
                 "handsign_ok",
-                store,
+                get_session_store(),
                 lambda: publish_door_unlock(door),
                 logger,
             )
             # access log for both-mode is written by recognize_door_endpoint
             # (which has user_id); writing an anonymous log here would duplicate it
-
-    from src.camera.broker import CameraFrameBroker
 
     progress_payload: dict[str, object] = {
         "type": "handsign_progress",
