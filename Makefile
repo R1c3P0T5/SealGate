@@ -1,16 +1,24 @@
-COMPOSE_DEV := docker compose
+COMPOSE_DEV := docker compose -p sealgate-dev
 COMPOSE_PROD := docker compose -f docker-compose.yml
 PROFILE ?= full
 
-.PHONY: dev dev-full prod server worker update build push logs down
+.PHONY: dev-setup dev-reset dev dev-full prod server worker update build push logs down
 
-# Development — uses override.yml automatically (hot-reload)
+# Prepare local env files and deterministic development seed data.
+dev-setup:
+	python3 scripts/dev_setup.py
+
+# Reset local Compose volumes, then recreate env files and development seed data.
+dev-reset:
+	python3 scripts/dev_setup.py --reset
+
+# Development — backend + frontend with override.yml hot reload.
 dev:
-	$(COMPOSE_DEV) --profile server up
+	$(COMPOSE_DEV) --profile server up backend frontend
 
-# Development — all services including worker
+# Development — backend + frontend + worker with override.yml hot reload.
 dev-full:
-	$(COMPOSE_DEV) --profile full up
+	$(COMPOSE_DEV) --profile full up backend frontend worker
 
 # Production — all services on one machine
 prod:

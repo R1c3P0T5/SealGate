@@ -69,8 +69,10 @@ services, the camera worker, and a full single-machine stack.
 The Makefile wraps the common Compose commands:
 
 ```bash
-make dev                    # development server profile with hot reload
-make dev-full               # development full profile with worker
+make dev-setup              # create local env files and seed deterministic dev data
+make dev                    # development backend + frontend with hot reload
+make dev-full               # development backend + frontend + worker with hot reload
+make dev-reset              # reset local Compose volumes, then rerun dev setup
 make server                 # production-style backend + frontend + cloudflared
 make worker                 # production-style worker only
 make prod                   # production-style full stack
@@ -82,9 +84,20 @@ make down
 ```
 
 `docker-compose.override.yml` is used automatically for local development and
-adds bind mounts and hot-reload commands. Production and update targets use only
+adds bind mounts and hot-reload commands. Development Make targets start only
+the services needed locally, so `make dev` does not require a root `.env` or a
+Cloudflare tunnel token. Production and update targets use only
 `docker-compose.yml`; update targets force container recreation so changed
 `backend/.env` or `jetson/.env` values are applied.
+
+`make dev-setup` is safe to rerun. It creates missing `.env`, `backend/.env`,
+and `jetson/.env` files, fills placeholder development values, and seeds a
+deterministic admin, door, and device token for local testing. Existing custom
+values are preserved and used as seed input where possible. Development Compose
+targets use the `sealgate-dev` project name so local volumes stay separate from
+production-style Make targets. Use `make dev-reset` only when you want to remove
+local development Compose volumes and recreate the deterministic development
+data.
 
 ## Backend Commands
 
