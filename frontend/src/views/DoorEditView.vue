@@ -2,20 +2,35 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { Alert, Button, Dialog, Input, RadioGroup, Skeleton, Switch, useToast } from '@/lib'
+import {
+  Alert,
+  Button,
+  Card,
+  Checkbox,
+  Dialog,
+  Input,
+  RadioGroup,
+  Skeleton,
+  Switch,
+  useToast,
+} from '@/lib'
 import type { RadioGroupOption } from '@/lib'
 import DoorEditLayout from '@/layouts/DoorEditLayout.vue'
 import {
+  assignJutsuEndpointApiDoorsDoorIdJutsuJutsuIdPost,
   createDeviceEndpointApiDevicesPost,
   deleteDeviceEndpointApiDevicesDeviceIdDelete,
   deleteDoorEndpointApiDoorsDoorIdDelete,
   getDoorEndpointApiDoorsDoorIdGet,
   listDevicesEndpointApiDevicesGet,
+  listDoorJutsuEndpointApiDoorsDoorIdJutsuGet,
+  listJutsuEndpointApiJutsuGet,
   rotateDeviceTokenEndpointApiDevicesDeviceIdRotateTokenPost,
+  unassignJutsuEndpointApiDoorsDoorIdJutsuJutsuIdDelete,
   updateDeviceEndpointApiDevicesDeviceIdPut,
   updateDoorEndpointApiDoorsDoorIdPut,
 } from '@/api/sdk.gen'
-import type { DeviceResponse, DoorResponse } from '@/api/types.gen'
+import type { DeviceResponse, DoorResponse, JutsuResponse } from '@/api/types.gen'
 
 defineOptions({ name: 'DoorEditView' })
 
@@ -72,6 +87,11 @@ const deviceForm = ref<DeviceForm>({ name: '', is_active: true })
 const newDeviceName = ref('')
 const errors = ref<FormErrors>({})
 
+const allJutsu = ref<JutsuResponse[]>([])
+const assignedJutsuIds = ref<string[]>([])
+const selectedJutsuIds = ref<string[]>([])
+const jutsuError = ref<string | null>(null)
+
 const loading = ref(false)
 const saving = ref(false)
 const deleting = ref(false)
@@ -105,6 +125,21 @@ function applyDoor(d: DoorResponse) {
 
 function onAuthModeChange(value: string) {
   doorForm.value.auth_mode = value as AuthMode
+}
+
+function toggleJutsu(id: string, checked: boolean) {
+  const next = new Set(selectedJutsuIds.value)
+  if (checked) next.add(id)
+  else next.delete(id)
+  selectedJutsuIds.value = [...next]
+}
+
+function cancelEdits() {
+  if (door.value) applyDoor(door.value)
+  applyDevice(device.value)
+  selectedJutsuIds.value = [...assignedJutsuIds.value]
+  errors.value = {}
+  generalError.value = null
 }
 
 function applyDevice(d: DeviceResponse | null) {
@@ -158,7 +193,13 @@ const deviceDirty = computed(() => {
   )
 })
 
-const dirty = computed(() => doorDirty.value || deviceDirty.value)
+const jutsuDirty = computed(() => {
+  if (assignedJutsuIds.value.length !== selectedJutsuIds.value.length) return true
+  const assigned = new Set(assignedJutsuIds.value)
+  return selectedJutsuIds.value.some((id) => !assigned.has(id))
+})
+
+const dirty = computed(() => doorDirty.value || deviceDirty.value || jutsuDirty.value)
 
 async function load() {
   loading.value = true
@@ -178,6 +219,27 @@ async function load() {
     loadError.value = errorMessage(err, 'Could not load door.')
   } finally {
     loading.value = false
+  }
+  // Seal data is secondary; a failure here (e.g. jutsu endpoints unavailable or
+  // forbidden) must not block entering the door edit page.
+  void loadJutsu()
+}
+
+async function loadJutsu() {
+  jutsuError.value = null
+  try {
+    const [jutsuRes, doorJutsuRes] = await Promise.all([
+      listJutsuEndpointApiJutsuGet({ query: { limit: 100 }, throwOnError: true }),
+      listDoorJutsuEndpointApiDoorsDoorIdJutsuGet({
+        path: { door_id: doorId.value },
+        throwOnError: true,
+      }),
+    ])
+    allJutsu.value = jutsuRes.data.jutsu
+    assignedJutsuIds.value = doorJutsuRes.data.jutsu.map((j) => j.id)
+    selectedJutsuIds.value = [...assignedJutsuIds.value]
+  } catch (err) {
+    jutsuError.value = errorMessage(err, 'Could not load seals.')
   }
 }
 
@@ -202,6 +264,27 @@ async function save() {
         throwOnError: true,
       })
       applyDoor(res.data as DoorResponse)
+    }
+    if (jutsuDirty.value) {
+      const assigned = new Set(assignedJutsuIds.value)
+      const selected = new Set(selectedJutsuIds.value)
+      const toAssign = selectedJutsuIds.value.filter((id) => !assigned.has(id))
+      const toUnassign = assignedJutsuIds.value.filter((id) => !selected.has(id))
+      await Promise.all([
+        ...toAssign.map((jutsuId) =>
+          assignJutsuEndpointApiDoorsDoorIdJutsuJutsuIdPost({
+            path: { door_id: doorId.value, jutsu_id: jutsuId },
+            throwOnError: true,
+          }),
+        ),
+        ...toUnassign.map((jutsuId) =>
+          unassignJutsuEndpointApiDoorsDoorIdJutsuJutsuIdDelete({
+            path: { door_id: doorId.value, jutsu_id: jutsuId },
+            throwOnError: true,
+          }),
+        ),
+      ])
+      assignedJutsuIds.value = [...selectedJutsuIds.value]
     }
     if (deviceDirty.value && device.value) {
       const res = await updateDeviceEndpointApiDevicesDeviceIdPut({
@@ -354,6 +437,9 @@ onMounted(load)
         @click="deleteDialogOpen = true"
       >
         Delete
+      </Button>
+      <Button variant="ghost" size="sm" :disabled="!dirty || busy" @click="cancelEdits">
+        Cancel
       </Button>
       <Button
         variant="primary"
@@ -527,6 +613,45 @@ onMounted(load)
         </div>
       </section>
     </div>
+
+    <template v-if="door" #below>
+      <Card title="Hand seals">
+        <div class="grid gap-3">
+          <p class="text-xs text-text-lo">
+            Seals that open this door — completing any one unlocks it.
+          </p>
+          <p
+            v-if="doorForm.auth_mode === 'face'"
+            class="font-mono text-[11px] uppercase tracking-[0.08em] text-text-placeholder"
+          >
+            Only used when authentication includes hand seals.
+          </p>
+          <Alert v-if="jutsuError" variant="err">{{ jutsuError }}</Alert>
+          <Alert v-else-if="allJutsu.length === 0" variant="warn">
+            No seals defined yet. Create one on the Seals page first.
+          </Alert>
+          <template v-else>
+            <div class="grid gap-2">
+              <Checkbox
+                v-for="j in allJutsu"
+                :key="j.id"
+                :model-value="selectedJutsuIds.includes(j.id)"
+                :label="j.name"
+                :description="j.signs.join(' → ')"
+                :disabled="busy"
+                @update:model-value="(checked) => toggleJutsu(j.id, checked)"
+              />
+            </div>
+            <Alert
+              v-if="doorForm.auth_mode !== 'face' && selectedJutsuIds.length === 0"
+              variant="warn"
+            >
+              No seals selected — this door can't be opened by hand until you assign at least one.
+            </Alert>
+          </template>
+        </div>
+      </Card>
+    </template>
 
     <Dialog v-model:open="rotateDialogOpen" title="Rotate token?">
       <p>
