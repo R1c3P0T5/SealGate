@@ -20,6 +20,7 @@ from src.handsign.access import (
 )
 from src.handsign.registry import HandsignFSMRegistry
 from src.handsign.schemas import (
+    DoorJutsuListResponse,
     HandsignFeedRequest,
     HandsignFeedResponse,
     JutsuCreateRequest,
@@ -198,6 +199,23 @@ async def delete_jutsu_endpoint(
 
 
 handsign_door_router = APIRouter(prefix="/api/doors", tags=["jutsu"])
+
+
+@handsign_door_router.get(
+    "/{door_id}/jutsu",
+    response_model=DoorJutsuListResponse,
+    summary="List jutsu assigned to a door",
+)
+async def list_door_jutsu_endpoint(
+    door_id: Annotated[UUID, Path()],
+    session: SessionDep,
+    current_user: Annotated[User, Depends(require_permission("door:read"))],
+) -> DoorJutsuListResponse:
+    from src.doors.service import get_door_by_id
+
+    await get_door_by_id(door_id, session)
+    rows = await get_door_jutsu(door_id, session)
+    return DoorJutsuListResponse(jutsu=[_to_response(j) for j in rows])
 
 
 @handsign_door_router.post(

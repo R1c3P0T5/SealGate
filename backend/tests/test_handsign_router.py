@@ -208,6 +208,70 @@ async def test_unassign_jutsu_from_door(
 
 
 @pytest.mark.asyncio
+async def test_list_door_jutsu(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    test_admin: User,
+) -> None:
+    await _grant_admin_permissions(database_session, test_admin, ("door:read",))
+    door = await _create_door(database_session)
+    jutsu = await _create_jutsu(database_session)
+    database_session.add(DoorJutsu(door_id=door.id, jutsu_id=jutsu.id))
+    await database_session.commit()
+
+    response = await client.get(
+        f"/api/doors/{door.id}/jutsu",
+        headers=_auth(create_access_token(test_admin.id)),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [j["id"] for j in body["jutsu"]] == [str(jutsu.id)]
+
+
+@pytest.mark.asyncio
+async def test_list_door_jutsu_empty(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    test_admin: User,
+) -> None:
+    await _grant_admin_permissions(database_session, test_admin, ("door:read",))
+    door = await _create_door(database_session)
+
+    response = await client.get(
+        f"/api/doors/{door.id}/jutsu",
+        headers=_auth(create_access_token(test_admin.id)),
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"jutsu": []}
+
+
+@pytest.mark.asyncio
+async def test_list_door_jutsu_requires_auth(
+    client: AsyncClient,
+    database_session: AsyncSession,
+) -> None:
+    door = await _create_door(database_session)
+    response = await client.get(f"/api/doors/{door.id}/jutsu")
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_list_door_jutsu_not_found(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    test_admin: User,
+) -> None:
+    await _grant_admin_permissions(database_session, test_admin, ("door:read",))
+    response = await client.get(
+        f"/api/doors/{uuid4()}/jutsu",
+        headers=_auth(create_access_token(test_admin.id)),
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_create_jutsu_invalid_sign(
     client: AsyncClient,
     database_session: AsyncSession,

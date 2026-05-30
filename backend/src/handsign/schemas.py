@@ -49,6 +49,10 @@ class JutsuListResponse(BaseModel):
     jutsu: list[JutsuResponse]
 
 
+class DoorJutsuListResponse(BaseModel):
+    jutsu: list[JutsuResponse]
+
+
 class HandsignFeedRequest(BaseModel):
     sign: str = Field(description="Confirmed romaji sign name (e.g. 'tora').")
     timestamp: float = Field(description="Unix timestamp from Jetson.")
