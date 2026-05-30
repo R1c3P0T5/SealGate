@@ -12,12 +12,14 @@ import {
 } from '@/api/sdk.gen'
 import type { AccessLogResponse, DoorResponse } from '@/api/types.gen'
 import { useAuthStore } from '@/stores/auth'
+import { gestureImageUrl } from '@/stores/gestures'
 
 defineOptions({ name: 'LiveRecognitionView' })
 
 type ConnectionStatus = 'connecting' | 'live' | 'offline'
 type CameraStatus = 'idle' | 'connecting' | 'live' | 'offline'
 type FaceBox = { x: number; y: number; width: number; height: number; score?: number }
+type HandBox = FaceBox & { sign?: string }
 
 const MAX_EVENTS = 20
 const VISIBLE_EVENTS = 3
@@ -25,6 +27,8 @@ const RECONNECT_DELAY_MS = 3000
 const MATCH_HIGHLIGHT_MS = 2000
 const FACE_BOX_MATCH_COLOR = '#a4d5b5'
 const FACE_BOX_DEFAULT_COLOR = '#e0a8a8'
+const HAND_BOX_COLOR = '#d96b6b'
+const HAND_BOX_MATCH_COLOR = '#a4d5b5'
 
 const toast = useToast()
 const auth = useAuthStore()
@@ -40,6 +44,7 @@ const error = ref<string | null>(null)
 const cameraStatus = ref<CameraStatus>('idle')
 const cameraFrameUrl = ref<string | null>(null)
 const faceBoxes = ref<FaceBox[]>([])
+const handBoxes = ref<HandBox[]>([])
 const matchActive = ref(false)
 
 let socket: WebSocket | null = null
@@ -203,6 +208,7 @@ function disconnectCamera() {
   activeCameraDoorId = null
   releaseFrame()
   faceBoxes.value = []
+  handBoxes.value = []
   clearMatchHighlight()
   cameraStatus.value = 'idle'
 }
@@ -251,9 +257,15 @@ async function connectCamera(doorId: string) {
     if (cameraSocket !== ws) return
     if (typeof ev.data === 'string') {
       try {
-        const payload = JSON.parse(ev.data) as { type?: string; faces?: FaceBox[] }
+        const payload = JSON.parse(ev.data) as {
+          type?: string
+          faces?: FaceBox[]
+          hands?: HandBox[]
+        }
         if (payload.type === 'face_boxes' && Array.isArray(payload.faces)) {
           faceBoxes.value = payload.faces
+        } else if (payload.type === 'hand_boxes' && Array.isArray(payload.hands)) {
+          handBoxes.value = payload.hands
         }
       } catch {
         // ignore malformed metadata
@@ -383,6 +395,32 @@ onBeforeUnmount(() => {
               vector-effect="non-scaling-stroke"
             />
           </svg>
+          <div
+            v-if="cameraFrameUrl && handBoxes.length"
+            class="pointer-events-none absolute inset-0"
+            aria-hidden="true"
+          >
+            <div
+              v-for="(box, index) in handBoxes"
+              :key="index"
+              class="absolute border-2"
+              :style="{
+                left: `${box.x * 100}%`,
+                top: `${box.y * 100}%`,
+                width: `${box.width * 100}%`,
+                height: `${box.height * 100}%`,
+                borderColor: box.sign ? HAND_BOX_MATCH_COLOR : HAND_BOX_COLOR,
+              }"
+            >
+              <img
+                v-if="box.sign"
+                :src="gestureImageUrl(box.sign)"
+                :alt="box.sign"
+                class="absolute left-0 top-0 h-7 w-7 -translate-y-full rounded-[2px] border-2 object-cover md:h-9 md:w-9"
+                :style="{ borderColor: HAND_BOX_MATCH_COLOR }"
+              />
+            </div>
+          </div>
           <p
             v-if="!cameraFrameUrl"
             class="font-mono text-xs uppercase tracking-[0.08em] text-text-placeholder"
