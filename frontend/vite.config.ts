@@ -30,11 +30,11 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: process.env.VITE_BACKEND_URL ?? 'http://localhost:8000',
         changeOrigin: true,
       },
       '/ws': {
-        target: 'ws://localhost:8000',
+        target: (process.env.VITE_BACKEND_URL ?? 'http://localhost:8000').replace(/^http/, 'ws'),
         ws: true,
         changeOrigin: true,
       },
