@@ -23,5 +23,6 @@ defineOptions({ name: 'DoorEditLayout' })
     <Card>
       <slot />
     </Card>
+    <slot name="below" />
   </div>
 </template>
