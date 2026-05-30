@@ -17,12 +17,13 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_check_constraint(
-        "door_auth_mode_check",
-        "door",
-        "auth_mode IN ('face', 'handsign', 'both')",
-    )
+    with op.batch_alter_table("door") as batch_op:
+        batch_op.create_check_constraint(
+            "door_auth_mode_check",
+            "auth_mode IN ('face', 'handsign', 'both')",
+        )
 
 
 def downgrade() -> None:
-    op.drop_constraint("door_auth_mode_check", "door", type_="check")
+    with op.batch_alter_table("door") as batch_op:
+        batch_op.drop_constraint("door_auth_mode_check", type_="check")
