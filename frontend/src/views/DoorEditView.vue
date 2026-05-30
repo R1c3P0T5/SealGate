@@ -2,7 +2,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { Alert, Button, Dialog, Input, Skeleton, Switch, useToast } from '@/lib'
+import { Alert, Button, Dialog, Input, RadioGroup, Skeleton, Switch, useToast } from '@/lib'
+import type { RadioGroupOption } from '@/lib'
 import DoorEditLayout from '@/layouts/DoorEditLayout.vue'
 import {
   createDeviceEndpointApiDevicesPost,
@@ -18,11 +19,13 @@ import type { DeviceResponse, DoorResponse } from '@/api/types.gen'
 
 defineOptions({ name: 'DoorEditView' })
 
+type AuthMode = 'face' | 'handsign' | 'both'
 type DoorForm = {
   name: string
   mqtt_id: string
   location: string
   is_active: boolean
+  auth_mode: AuthMode
 }
 type DeviceForm = {
   name: string
@@ -36,6 +39,19 @@ const MQTT_ID_PATTERN = /^[a-z0-9][a-z0-9_-]*$/
 const NAME_MAX = 128
 const MQTT_ID_MAX = 64
 const LOCATION_MAX = 256
+const AUTH_MODE_OPTIONS: RadioGroupOption[] = [
+  { value: 'face', label: 'Face only', description: 'Unlock with a recognized face.' },
+  {
+    value: 'handsign',
+    label: 'Hand seal only',
+    description: 'Anyone completing an assigned seal unlocks; face is not checked.',
+  },
+  {
+    value: 'both',
+    label: 'Face + seal',
+    description: 'A recognized authorized face and a completed seal within 60 seconds.',
+  },
+]
 
 const route = useRoute()
 const router = useRouter()
@@ -45,7 +61,13 @@ const doorId = computed(() => String(route.params.doorId))
 
 const door = ref<DoorResponse | null>(null)
 const device = ref<DeviceResponse | null>(null)
-const doorForm = ref<DoorForm>({ name: '', mqtt_id: '', location: '', is_active: true })
+const doorForm = ref<DoorForm>({
+  name: '',
+  mqtt_id: '',
+  location: '',
+  is_active: true,
+  auth_mode: 'face',
+})
 const deviceForm = ref<DeviceForm>({ name: '', is_active: true })
 const newDeviceName = ref('')
 const errors = ref<FormErrors>({})
@@ -77,7 +99,12 @@ function applyDoor(d: DoorResponse) {
     mqtt_id: d.mqtt_id ?? '',
     location: d.location ?? '',
     is_active: d.is_active,
+    auth_mode: d.auth_mode,
   }
+}
+
+function onAuthModeChange(value: string) {
+  doorForm.value.auth_mode = value as AuthMode
 }
 
 function applyDevice(d: DeviceResponse | null) {
@@ -118,7 +145,8 @@ const doorDirty = computed(() => {
     door.value.name !== doorForm.value.name ||
     (door.value.mqtt_id ?? '') !== doorForm.value.mqtt_id ||
     (door.value.location ?? '') !== doorForm.value.location ||
-    door.value.is_active !== doorForm.value.is_active
+    door.value.is_active !== doorForm.value.is_active ||
+    door.value.auth_mode !== doorForm.value.auth_mode
   )
 })
 
@@ -169,6 +197,7 @@ async function save() {
           mqtt_id: doorForm.value.mqtt_id.trim(),
           location: doorForm.value.location.trim() || null,
           is_active: doorForm.value.is_active,
+          auth_mode: doorForm.value.auth_mode,
         },
         throwOnError: true,
       })
@@ -415,6 +444,17 @@ onMounted(load)
           description="Allow recognition and unlock"
           :disabled="busy"
         />
+        <div class="grid gap-2">
+          <span class="font-mono text-[11px] uppercase tracking-[0.1em] text-text-placeholder">
+            Authentication
+          </span>
+          <RadioGroup
+            :model-value="doorForm.auth_mode"
+            :options="AUTH_MODE_OPTIONS"
+            :disabled="busy"
+            @update:model-value="onAuthModeChange"
+          />
+        </div>
       </section>
 
       <section class="grid gap-3 border-t border-border-soft pt-5">
