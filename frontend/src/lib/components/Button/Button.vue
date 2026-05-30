@@ -48,7 +48,7 @@ const base =
 
 const sizeClasses: Record<ButtonSize, string> = {
   xs: 'min-h-7 px-2 py-1 text-xs',
-  sm: 'min-h-8 px-2.5 py-1.5 text-xs',
+  sm: 'min-h-8 min-w-20 px-2.5 py-1.5 text-xs',
   default: 'min-h-9 px-3 py-2',
   lg: 'min-h-10.5 px-3.5 py-2.5 text-[0.8125rem]',
 }
