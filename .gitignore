@@ -1,6 +1,9 @@
 # IDE
 .vscode/*
 
+# Local environment
+.env
+
 # Python
 __pycache__/
 .pytest_cache/
