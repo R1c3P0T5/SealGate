@@ -14,6 +14,7 @@ from src.roles.models import Role as _Role  # noqa: F401
 from src.permissions.models import Permission as _Permission  # noqa: F401
 from src.permissions.models import RolePermission as _RolePermission  # noqa: F401
 from src.permissions.models import UserPermissionOverride as _UserPermissionOverride  # noqa: F401
+from src.access_logs.models import AccessLog as _AccessLog  # noqa: F401
 import src.handsign.models as _handsign_models  # noqa: F401
 from src.users.models import User
 
