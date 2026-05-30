@@ -54,33 +54,6 @@ def _hand_box_payload(value: object) -> dict[str, object] | None:
     return box
 
 
-def _hand_meta_box_payload(value: object) -> dict[str, object] | None:
-    """Parse Jetson hand_meta entry: {box: [x,y,w,h], sign, confidence}."""
-    if not isinstance(value, dict):
-        return None
-    raw_box = value.get("box")
-    if not isinstance(raw_box, list) or len(raw_box) != 4:
-        return None
-    x = _metadata_number(raw_box[0])
-    y = _metadata_number(raw_box[1])
-    width = _metadata_number(raw_box[2])
-    height = _metadata_number(raw_box[3])
-    if x is None or y is None or width is None or height is None:
-        return None
-    if x < 0 or y < 0 or width <= 0 or height <= 0:
-        return None
-    if x > 1.0001 or y > 1.0001 or x + width > 1.0001 or y + height > 1.0001:
-        return None
-    box: dict[str, object] = {"x": x, "y": y, "width": width, "height": height}
-    score = _metadata_number(value.get("confidence"))
-    if score is not None:
-        box["score"] = score
-    sign = value.get("sign")
-    if isinstance(sign, str) and sign:
-        box["sign"] = sign
-    return box
-
-
 def _face_box_payload(value: object) -> dict[str, float] | None:
     if not isinstance(value, dict):
         return None
@@ -142,17 +115,28 @@ def _camera_metadata_payload(text: str) -> dict[str, object] | None:
         return {"type": "hand_boxes", "hands": hands}
 
     if msg_type == "hand_meta":
-        # Jetson sends {box: [x,y,w,h], sign, confidence}; normalise to hand_boxes.
+        # Jetson sends {box: [x,y,w,h], sign, confidence}; normalise to hand_boxes
+        # dict shape so _hand_box_payload can validate without duplication.
         raw_hands = payload.get("hands")
         if not isinstance(raw_hands, list):
             return None
-        hands_meta: list[dict[str, object]] = []
+        hands: list[dict[str, object]] = []
         for raw_hand in raw_hands:
-            hand = _hand_meta_box_payload(raw_hand)
-            if hand is None:
-                continue
-            hands_meta.append(hand)
-        return {"type": "hand_boxes", "hands": hands_meta}
+            if isinstance(raw_hand, dict):
+                b = raw_hand.get("box")
+                if isinstance(b, list) and len(b) == 4:
+                    raw_hand = {
+                        "x": b[0],
+                        "y": b[1],
+                        "width": b[2],
+                        "height": b[3],
+                        "score": raw_hand.get("confidence"),
+                        "sign": raw_hand.get("sign"),
+                    }
+            hand = _hand_box_payload(raw_hand)
+            if hand is not None:
+                hands.append(hand)
+        return {"type": "hand_boxes", "hands": hands}
 
     return None
 
