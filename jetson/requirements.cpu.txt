@@ -1,0 +1,5 @@
+# Local/dev container only. Real Jetson hardware should install the
+# NVIDIA-provided torch/torchvision wheels matching its JetPack version.
+--index-url https://download.pytorch.org/whl/cpu
+torch
+torchvision

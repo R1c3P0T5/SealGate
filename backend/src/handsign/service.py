@@ -89,6 +89,11 @@ async def unassign_door_jutsu(
     await session.commit()
 
 
+async def get_door_ids_for_jutsu(jutsu_id: UUID, session: AsyncSession) -> list[UUID]:
+    stmt = select(DoorJutsu.door_id).where(DoorJutsu.jutsu_id == jutsu_id)
+    return list((await session.exec(stmt)).all())
+
+
 async def get_door_jutsu(door_id: UUID, session: AsyncSession) -> list[Jutsu]:
     stmt = (
         select(Jutsu)

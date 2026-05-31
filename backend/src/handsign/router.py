@@ -32,6 +32,7 @@ from src.handsign.service import (
     assign_door_jutsu,
     create_jutsu,
     delete_jutsu,
+    get_door_ids_for_jutsu,
     get_door_jutsu,
     get_jutsu_by_id,
     list_jutsu,
@@ -113,6 +114,12 @@ async def _reload_door_registry(door_id: UUID, session: AsyncSession) -> None:
         _registry.unload(door_id)
 
 
+async def _reload_jutsu_door_registries(jutsu_id: UUID, session: AsyncSession) -> None:
+    door_ids = await get_door_ids_for_jutsu(jutsu_id, session)
+    for door_id in door_ids:
+        await _reload_door_registry(door_id, session)
+
+
 jutsu_router = APIRouter(tags=["jutsu"])
 
 
@@ -184,7 +191,9 @@ async def update_jutsu_endpoint(
         User, Depends(_require_jutsu_permission("jutsu:update", JUTSU_UPDATE_ACTION))
     ],
 ) -> JutsuResponse:
-    return _to_response(await update_jutsu(jutsu_id, request, session))
+    jutsu = await update_jutsu(jutsu_id, request, session)
+    await _reload_jutsu_door_registries(jutsu_id, session)
+    return _to_response(jutsu)
 
 
 @jutsu_router.delete("/api/jutsu/{jutsu_id}", status_code=status.HTTP_204_NO_CONTENT)
