@@ -24,6 +24,7 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
+      - ./openapi.json:/openapi.json:ro
     depends_on:
       backend:
         condition: service_healthy
@@ -31,5 +32,9 @@ services:
   worker:
     build: ./jetson
     image: sealgate-worker:dev
+    env_file: ./jetson/.env
+    environment:
+      BACKEND_URL: ${WORKER_BACKEND_URL:-http://backend:8000}
+      BACKEND_WS_URL: ${WORKER_BACKEND_WS_URL:-ws://backend:8000}
     volumes:
       - ./jetson:/app
