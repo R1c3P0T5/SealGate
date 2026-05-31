@@ -25,6 +25,8 @@ from dotenv import load_dotenv
 try:
     import mediapipe as mp  # type: ignore[import-untyped]
     import torch  # type: ignore[import-untyped]
+    import torch.nn as nn  # type: ignore[import-untyped]
+    import torchvision.models as tv_models  # type: ignore[import-untyped]
     import torchvision.transforms as T  # type: ignore[import-untyped]
 
     try:
@@ -382,7 +384,17 @@ async def handsign_task() -> None:
     if not full_path.exists():
         logger.warning("Handsign checkpoint not found: %s — loop disabled", full_path)
         return
-    model = torch.load(str(full_path), map_location="cpu")
+    ckpt = torch.load(str(full_path), map_location="cpu", weights_only=False)
+    sign_classes: list[str] = ckpt["classes"]
+    model = tv_models.efficientnet_b0(weights=None)
+    model.classifier = nn.Sequential(
+        nn.Dropout(p=0.2, inplace=True),
+        nn.Linear(1280, 256),
+        nn.SiLU(),
+        nn.Dropout(p=0.2, inplace=True),
+        nn.Linear(256, len(sign_classes)),
+    )
+    model.load_state_dict(ckpt["model"])
     model.eval()
     sign_filter = SignFilter(hold_ms=_settings.handsign_hold_ms)
     mp_hands = mp.solutions.hands.Hands(
@@ -399,9 +411,8 @@ async def handsign_task() -> None:
     def _infer(frame: np.ndarray) -> tuple[int, float, list[dict]]:
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         result = mp_hands.process(rgb)
-        hands_meta: list[dict] = []
         if not result.multi_hand_landmarks:
-            return -1, 0.0, hands_meta
+            return -1, 0.0, []
         lm = result.multi_hand_landmarks[0]
         h, w = frame.shape[:2]
         xs = [p.x * w for p in lm.landmark]
@@ -410,9 +421,15 @@ async def handsign_task() -> None:
         y1 = max(0, int(min(ys)) - 10)
         x2 = min(w, int(max(xs)) + 10)
         y2 = min(h, int(max(ys)) + 10)
+        box: dict = {
+            "x": round(x1 / w, 6),
+            "y": round(y1 / h, 6),
+            "width": round((x2 - x1) / w, 6),
+            "height": round((y2 - y1) / h, 6),
+        }
         crop = frame[y1:y2, x1:x2]
         if crop.size == 0:
-            return -1, 0.0, hands_meta
+            return -1, 0.0, [box]
         inp = _HANDSIGN_TRANSFORM(crop).unsqueeze(0)
         with torch.no_grad():
             out = model(inp)
@@ -420,17 +437,10 @@ async def handsign_task() -> None:
             _max = probs.max(dim=1)
         conf_val = _max.values.item()
         idx_val = int(_max.indices.item())
-        if conf_val < _settings.handsign_threshold:
-            return -1, conf_val, hands_meta
-        sign_name = SIGN_CLASSES[idx_val]
-        hands_meta = [
-            {
-                "box": [x1 / w, y1 / h, (x2 - x1) / w, (y2 - y1) / h],
-                "sign": sign_name,
-                "confidence": round(conf_val, 4),
-            }
-        ]
-        return idx_val, conf_val, hands_meta
+        sign_name = sign_classes[idx_val]
+        if conf_val < _settings.handsign_threshold or sign_name == "unknown":
+            return -1, conf_val, [box]
+        return idx_val, conf_val, [{**box, "sign": sign_name, "confidence": round(conf_val, 4)}]
 
     logger.info("Handsign loop starting at %d FPS", _settings.handsign_fps)
     while True:
@@ -441,7 +451,7 @@ async def handsign_task() -> None:
                 _handsign_executor, _infer, frame
             )
             if _streaming:
-                payload: dict = {"type": "hand_meta", "hands": hands_meta}
+                payload: dict = {"type": "hand_boxes", "hands": hands_meta}
                 if _metadata_queue.full():
                     try:
                         _metadata_queue.get_nowait()
@@ -452,7 +462,7 @@ async def handsign_task() -> None:
                 except asyncio.QueueFull:
                     pass
             confirmed = sign_filter.update(
-                sign_idx, SIGN_CLASSES, time.monotonic()
+                sign_idx, sign_classes, time.monotonic()
             )
             if confirmed:
                 try:

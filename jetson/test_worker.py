@@ -6,6 +6,11 @@ import pytest
 import worker
 
 
+@pytest.fixture(autouse=True)
+def _disable_dotenv(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PYTHON_DOTENV_DISABLED", "1")
+
+
 class _FakeResponse:
     def __init__(self, payload: dict[str, object]) -> None:
         self._payload = payload
