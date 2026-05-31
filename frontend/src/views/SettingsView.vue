@@ -3,14 +3,19 @@ import { computed, ref } from 'vue'
 
 import { Alert, Button, Input, useToast } from '@/lib'
 import SettingsLayout from '@/layouts/SettingsLayout.vue'
-import { updateUserProfileApiUsersUserIdPut } from '@/api/sdk.gen'
+import {
+  changeUserPasswordApiUsersUserIdPasswordPut,
+  updateUserProfileApiUsersUserIdPut,
+} from '@/api/sdk.gen'
 import { useAuthStore } from '@/stores/auth'
 
 defineOptions({ name: 'SettingsView' })
 
 type FormErrors = Partial<Record<'full_name' | 'email', string>>
+type PasswordErrors = Partial<Record<'current' | 'next' | 'confirm', string>>
 
 const FULL_NAME_MAX = 255
+const PASSWORD_MIN = 12
 
 const auth = useAuthStore()
 const toast = useToast()
@@ -31,6 +36,19 @@ const generalError = ref<string | null>(null)
 const dirty = computed(
   () =>
     form.value.full_name !== initial.value.full_name || form.value.email !== initial.value.email,
+)
+
+const passwordForm = ref({
+  current: '',
+  next: '',
+  confirm: '',
+})
+const passwordErrors = ref<PasswordErrors>({})
+const changingPassword = ref(false)
+const passwordError = ref<string | null>(null)
+
+const passwordDirty = computed(
+  () => !!passwordForm.value.current || !!passwordForm.value.next || !!passwordForm.value.confirm,
 )
 
 function errorMessage(value: unknown, fallback: string) {
@@ -85,6 +103,42 @@ function reset() {
   errors.value = {}
   generalError.value = null
 }
+
+function validatePassword(): PasswordErrors {
+  const e: PasswordErrors = {}
+  const { current, next, confirm } = passwordForm.value
+  if (!current) e.current = 'Required.'
+  if (!next || next.length < PASSWORD_MIN) e.next = `Minimum ${PASSWORD_MIN} characters.`
+  else if (next === current) e.next = 'New password must differ from current.'
+  if (confirm !== next) e.confirm = 'Passwords do not match.'
+  return e
+}
+
+async function changePassword() {
+  if (!auth.user || !passwordDirty.value) return
+  passwordError.value = null
+  passwordErrors.value = validatePassword()
+  if (Object.keys(passwordErrors.value).length) return
+
+  changingPassword.value = true
+  try {
+    await changeUserPasswordApiUsersUserIdPasswordPut({
+      path: { user_id: auth.user.id },
+      body: {
+        current_password: passwordForm.value.current,
+        new_password: passwordForm.value.next,
+      },
+      throwOnError: true,
+    })
+    passwordForm.value = { current: '', next: '', confirm: '' }
+    passwordErrors.value = {}
+    toast.show({ title: 'Password updated' })
+  } catch (err) {
+    passwordError.value = errorMessage(err, 'Could not update password.')
+  } finally {
+    changingPassword.value = false
+  }
+}
 </script>
 
 <template>
@@ -96,39 +150,96 @@ function reset() {
       </Button>
     </template>
 
-    <div class="grid gap-4">
-      <Alert v-if="generalError" variant="err">{{ generalError }}</Alert>
+    <div class="grid gap-6">
+      <div class="grid gap-4">
+        <Alert v-if="generalError" variant="err">{{ generalError }}</Alert>
 
-      <div class="grid gap-1.5">
-        <label class="font-mono text-xs text-text-placeholder">Username</label>
-        <Input
-          :model-value="auth.user?.username ?? ''"
-          autocomplete="username"
-          disabled
-          hint="Username cannot be changed."
-        />
+        <div class="grid gap-1.5">
+          <label class="font-mono text-xs text-text-placeholder">Username</label>
+          <Input
+            :model-value="auth.user?.username ?? ''"
+            autocomplete="username"
+            disabled
+            hint="Username cannot be changed."
+          />
+        </div>
+        <div class="grid gap-1.5">
+          <label class="font-mono text-xs text-text-placeholder">Full name</label>
+          <Input
+            v-model="form.full_name"
+            autocomplete="name"
+            :invalid="!!errors.full_name"
+            :error="errors.full_name"
+            :disabled="saving"
+          />
+        </div>
+        <div class="grid gap-1.5">
+          <label class="font-mono text-xs text-text-placeholder">Email</label>
+          <Input
+            v-model="form.email"
+            type="email"
+            autocomplete="email"
+            :invalid="!!errors.email"
+            :error="errors.email"
+            :disabled="saving"
+          />
+        </div>
       </div>
-      <div class="grid gap-1.5">
-        <label class="font-mono text-xs text-text-placeholder">Full name</label>
-        <Input
-          v-model="form.full_name"
-          autocomplete="name"
-          :invalid="!!errors.full_name"
-          :error="errors.full_name"
-          :disabled="saving"
-        />
-      </div>
-      <div class="grid gap-1.5">
-        <label class="font-mono text-xs text-text-placeholder">Email</label>
-        <Input
-          v-model="form.email"
-          type="email"
-          autocomplete="email"
-          :invalid="!!errors.email"
-          :error="errors.email"
-          :disabled="saving"
-        />
-      </div>
+
+      <form class="grid gap-4 border-t border-border pt-6" @submit.prevent="changePassword">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="grid gap-0.5">
+            <h2 class="font-mono text-sm text-text-hi">Password</h2>
+            <p class="text-xs text-text-lo">Update the password for your account.</p>
+          </div>
+          <Button
+            type="submit"
+            variant="primary"
+            size="sm"
+            :loading="changingPassword"
+            :disabled="!passwordDirty"
+          >
+            Update password
+          </Button>
+        </div>
+
+        <Alert v-if="passwordError" variant="err">{{ passwordError }}</Alert>
+
+        <div class="grid gap-1.5">
+          <label class="font-mono text-xs text-text-placeholder">Current password</label>
+          <Input
+            v-model="passwordForm.current"
+            type="password"
+            autocomplete="current-password"
+            :invalid="!!passwordErrors.current"
+            :error="passwordErrors.current"
+            :disabled="changingPassword"
+          />
+        </div>
+        <div class="grid gap-1.5">
+          <label class="font-mono text-xs text-text-placeholder">New password</label>
+          <Input
+            v-model="passwordForm.next"
+            type="password"
+            autocomplete="new-password"
+            :invalid="!!passwordErrors.next"
+            :error="passwordErrors.next"
+            :hint="`Minimum ${PASSWORD_MIN} characters`"
+            :disabled="changingPassword"
+          />
+        </div>
+        <div class="grid gap-1.5">
+          <label class="font-mono text-xs text-text-placeholder">Confirm new password</label>
+          <Input
+            v-model="passwordForm.confirm"
+            type="password"
+            autocomplete="new-password"
+            :invalid="!!passwordErrors.confirm"
+            :error="passwordErrors.confirm"
+            :disabled="changingPassword"
+          />
+        </div>
+      </form>
     </div>
   </SettingsLayout>
 </template>
