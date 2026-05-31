@@ -7,7 +7,11 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.auth.utils import create_access_token
 from src.doors.models import Door
+from src.handsign.jutsu import SIGN_KANJI
 from src.handsign.models import DoorJutsu, Jutsu
+from src.handsign.registry import HandsignFSMRegistry
+from src.handsign.router import get_registry, init_handsign
+from src.handsign.session import DoorSessionStore
 from src.permissions.models import Permission, RolePermission
 from src.roles.models import Role
 from src.users.models import User
@@ -66,9 +70,13 @@ async def _create_jutsu(
     return jutsu
 
 
-async def _create_door(session: AsyncSession) -> Door:
+async def _create_door(
+    session: AsyncSession,
+    *,
+    auth_mode: str = "face",
+) -> Door:
     name = f"door_{uuid4().hex[:12]}"
-    door = Door(name=name, mqtt_id=name, is_active=True)
+    door = Door(name=name, mqtt_id=name, is_active=True, auth_mode=auth_mode)
     session.add(door)
     await session.commit()
     await session.refresh(door)
@@ -150,6 +158,41 @@ async def test_update_jutsu(
 
     assert response.status_code == 200
     assert response.json()["name"] == "Updated Jutsu"
+
+
+@pytest.mark.asyncio
+async def test_update_jutsu_reloads_assigned_door_registry(
+    client: AsyncClient,
+    database_session: AsyncSession,
+    test_admin: User,
+) -> None:
+    init_handsign(HandsignFSMRegistry(), DoorSessionStore())
+    await _grant_admin_permissions(
+        database_session, test_admin, ("door:update", "jutsu:update")
+    )
+    door = await _create_door(database_session, auth_mode="handsign")
+    jutsu = await _create_jutsu(database_session, name="Gate Seal", signs=["i"])
+    token = create_access_token(test_admin.id)
+
+    assign_response = await client.post(
+        f"/api/doors/{door.id}/jutsu/{jutsu.id}",
+        headers=_auth(token),
+    )
+    assert assign_response.status_code == 204
+    state = get_registry().get(door.id)
+    assert state is not None
+    assert state.fsm.jutsu == {"Gate Seal": [SIGN_KANJI["i"]]}
+
+    response = await client.put(
+        f"/api/jutsu/{jutsu.id}",
+        json={"signs": ["tora"]},
+        headers=_auth(token),
+    )
+
+    assert response.status_code == 200
+    state = get_registry().get(door.id)
+    assert state is not None
+    assert state.fsm.jutsu == {"Gate Seal": [SIGN_KANJI["tora"]]}
 
 
 @pytest.mark.asyncio
