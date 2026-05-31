@@ -109,6 +109,7 @@ _next_recognize_at = 0.0
 _latest_raw_frame: np.ndarray | None = None
 _settings: WorkerSettings
 _handsign_executor: concurrent.futures.ThreadPoolExecutor | None = None
+_next_handsign_debug_at = 0.0
 
 if _HANDSIGN_AVAILABLE:
     _HANDSIGN_TRANSFORM = T.Compose([T.ToPILImage(), T.Resize((64, 64)), T.ToTensor()])
@@ -375,7 +376,7 @@ async def detect_task() -> None:
 
 
 async def handsign_task() -> None:
-    global _handsign_executor
+    global _handsign_executor, _next_handsign_debug_at
     if not _HANDSIGN_AVAILABLE:
         logger.info("mediapipe/torch not available — handsign loop disabled")
         return
@@ -450,6 +451,17 @@ async def handsign_task() -> None:
             sign_idx, _confidence, hands_meta = await loop.run_in_executor(
                 _handsign_executor, _infer, frame
             )
+            now = time.monotonic()
+            if now >= _next_handsign_debug_at:
+                _next_handsign_debug_at = now + 1.0
+                if hands_meta:
+                    sign_name = hands_meta[0].get("sign", "unconfirmed")
+                    logger.info(
+                        "Handsign candidate: sign=%s confidence=%.3f threshold=%.3f",
+                        sign_name,
+                        _confidence,
+                        _settings.handsign_threshold,
+                    )
             if _streaming:
                 payload: dict = {"type": "hand_boxes", "hands": hands_meta}
                 if _metadata_queue.full():
@@ -465,6 +477,7 @@ async def handsign_task() -> None:
                 sign_idx, sign_classes, time.monotonic()
             )
             if confirmed:
+                logger.info("Handsign confirmed: %s", confirmed)
                 try:
                     await _http_client.post(
                         f"{_settings.backend_url}/api/doors/{_settings.door_id}/handsign/feed",
