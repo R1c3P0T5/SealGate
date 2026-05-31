@@ -59,7 +59,7 @@ class WorkerSettings:
     detector_model: str = "models/face_detection_yunet_2023mar.onnx"
     handsign_fps: int = 5
     handsign_hold_ms: int = 500
-    handsign_checkpoint: str = "models/best_cnn.pth"
+    handsign_checkpoint: str = "models/naruto.pth"
     handsign_threshold: float = 0.4
 
 
@@ -95,7 +95,7 @@ def load_settings() -> WorkerSettings:
         detector_model=os.getenv("FACE_DETECTOR_MODEL", "models/face_detection_yunet_2023mar.onnx"),
         handsign_fps=int(os.getenv("HANDSIGN_FPS", "5")),
         handsign_hold_ms=int(os.getenv("HANDSIGN_HOLD_MS", "500")),
-        handsign_checkpoint=os.getenv("HANDSIGN_CHECKPOINT", "models/best_cnn.pth"),
+        handsign_checkpoint=os.getenv("HANDSIGN_CHECKPOINT", "models/naruto.pth"),
         handsign_threshold=float(os.getenv("HANDSIGN_THRESHOLD", "0.4")),
     )
 
