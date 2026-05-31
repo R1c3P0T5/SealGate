@@ -10,6 +10,8 @@ from src.auth.utils import hash_password
 from src.devices.models import Device
 from src.devices.service import hash_device_token
 from src.doors.models import Door
+from src.handsign.models import DoorJutsu, Jutsu
+from src.permissions.models import Permission, UserPermissionOverride
 from src.roles.models import Role
 from src.users.models import User
 
@@ -23,6 +25,17 @@ DEV_DOOR_NAME = "Front Door"
 DEV_DOOR_MQTT_ID = "front-door"
 DEV_DEVICE_NAME = "dev-jetson"
 DEV_DEVICE_TOKEN = "dev-device-token"
+
+_DEV_USERS = [
+    ("alice", "Password123", "Alice Chen", "alice@example.test"),
+    ("bob", "Password123", "Bob Lin", "bob@example.test"),
+]
+
+_DEV_JUTSU: list[tuple[str, list[str]]] = [
+    ("Dragon Seal", ["tora", "tatsu"]),
+    ("Shadow Clone", ["ne", "tori", "uma"]),
+    ("Summoning", ["i", "inu", "mi", "ne"]),
+]
 
 
 @dataclass(frozen=True)
@@ -68,6 +81,12 @@ async def ensure_dev_seed(
     if admin_role is None:
         raise RuntimeError("Admin role seed data is missing.")
 
+    user_role = (
+        await session.exec(select(Role).where(Role.name == "user"))
+    ).one_or_none()
+    if user_role is None:
+        raise RuntimeError("User role seed data is missing.")
+
     admin = (
         await session.exec(select(User).where(User.username == admin_username))
     ).one_or_none()
@@ -82,6 +101,36 @@ async def ensure_dev_seed(
                 is_active=True,
             )
         )
+
+    camera_perm = (
+        await session.exec(
+            select(Permission).where(Permission.name == "camera:preview")
+        )
+    ).one_or_none()
+
+    for username, password, full_name, email in _DEV_USERS:
+        existing = (
+            await session.exec(select(User).where(User.username == username))
+        ).one_or_none()
+        if existing is None:
+            dev_user = User(
+                username=username,
+                email=email,
+                password_hash=hash_password(password),
+                full_name=full_name,
+                role_id=user_role.id,
+                is_active=True,
+            )
+            session.add(dev_user)
+            await session.flush()
+            if camera_perm is not None:
+                session.add(
+                    UserPermissionOverride(
+                        user_id=dev_user.id,
+                        permission_id=camera_perm.id,
+                        granted=True,
+                    )
+                )
 
     door = await session.get(Door, requested_door_id)
     if door is None:
@@ -102,6 +151,7 @@ async def ensure_dev_seed(
             mqtt_id=DEV_DOOR_MQTT_ID,
             location="Development",
             is_active=True,
+            auth_mode="handsign",
         )
         session.add(door)
         await session.flush()
@@ -132,6 +182,18 @@ async def ensure_dev_seed(
         device.token_hash = hash_device_token(config.device_token)
         device.is_active = True
         session.add(device)
+
+    for jutsu_name, signs in _DEV_JUTSU:
+        jutsu = (
+            await session.exec(select(Jutsu).where(Jutsu.name == jutsu_name))
+        ).one_or_none()
+        if jutsu is None:
+            jutsu = Jutsu(name=jutsu_name, signs=signs)
+            session.add(jutsu)
+            await session.flush()
+        assigned = await session.get(DoorJutsu, (door.id, jutsu.id))
+        if assigned is None:
+            session.add(DoorJutsu(door_id=door.id, jutsu_id=jutsu.id))
 
     await session.commit()
     return DevSeedResult(door_id=door.id, device_token=config.device_token)
