@@ -206,6 +206,34 @@ def run_backend_seed(repo_root: Path) -> None:
     _write_env(jetson_env, jetson_values)
 
 
+def download_models(repo_root: Path) -> None:
+    _run(
+        [sys.executable, str(repo_root / "jetson" / "scripts" / "download_models.py")],
+        repo_root,
+    )
+
+
+def generate_openapi(repo_root: Path) -> None:
+    openapi_path = repo_root / "openapi.json"
+    if openapi_path.exists():
+        return
+    result = _run(
+        _compose_command(
+            "--profile",
+            "server",
+            "run",
+            "--rm",
+            "--no-deps",
+            "backend",
+            "python",
+            "scripts/openapi-export.py",
+        ),
+        repo_root,
+        capture_output=True,
+    )
+    openapi_path.write_text(result.stdout, encoding="utf-8")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Prepare local SealGate development data."
@@ -222,6 +250,8 @@ def main() -> None:
     if args.reset:
         reset_dev_stack(repo_root)
     run_backend_seed(repo_root)
+    generate_openapi(repo_root)
+    download_models(repo_root)
     print("Development setup ready.")
     print("Admin: admin / AdminPassword123")
     print(f"Jetson: DOOR_ID={DEV_DOOR_ID} DEVICE_TOKEN={DEV_DEVICE_TOKEN}")
