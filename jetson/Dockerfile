@@ -5,8 +5,10 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+COPY requirements.txt requirements.cpu.txt ./
+
 RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.cpu.txt
 
 # Download YuNet face detection model at build time
 COPY scripts/download_models.py scripts/download_models.py

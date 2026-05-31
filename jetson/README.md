@@ -17,6 +17,16 @@ Install dependencies from the `jetson/` directory:
 pip install -r requirements.txt
 ```
 
+For local development with CPU-only hand-sign inference support, also install:
+
+```bash
+pip install -r requirements.cpu.txt
+```
+
+On Jetson hardware, install the NVIDIA-provided `torch` and `torchvision`
+wheels that match the device's JetPack version instead of using
+`requirements.cpu.txt`.
+
 Create a local environment file:
 
 ```bash
